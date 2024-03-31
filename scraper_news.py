@@ -6,13 +6,14 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from tqdm import tqdm
 
 def scrape_news(continent):
     driver = webdriver.Chrome()
     driver.get(f'https://www.nbcnews.com/news/{continent}')
 
     # Click the "Load More" button a specified number of times
-    for _ in range(7):
+    for _ in tqdm(range(7), desc=f"Loading news for {continent}"):
         try:
             load_more_button = WebDriverWait(driver, 5).until(
                 EC.presence_of_element_located((By.XPATH, "//button[@data-testid='button-hover-animation']"))
@@ -32,8 +33,7 @@ def scrape_news(continent):
 
     return soup
 
-def handle_soup(soup):
-    
+def handle_soup(soup, continent = 'unspecified'):
     # Find all news items
     news_items = soup.find_all('div', class_='wide-tease-item__wrapper df flex-column flex-row-m flex-nowrap-m')
 
@@ -52,7 +52,7 @@ def handle_soup(soup):
     bodies = []
 
     # Go through each link to extract dates and bodies
-    for link in links:
+    for link in tqdm(links, desc=f"Fetching articles for {continent}"):
         if link:
             try:
                 article_response = requests.get(link)
@@ -73,9 +73,7 @@ def handle_soup(soup):
             
         dates.append(date)
         bodies.append(body)
-    # Generate IDs
     
-
     return pd.DataFrame({
         'headline': headlines,
         'link': links,
@@ -87,9 +85,9 @@ europe_soup = scrape_news('europe')
 us_soup = scrape_news('us-news')
 africa_soup = scrape_news('africa')
 
-europe_df = handle_soup(europe_soup)
-us_df = handle_soup(us_soup)
-africa_df = handle_soup(africa_soup)
+europe_df = handle_soup(europe_soup, 'europe')
+us_df = handle_soup(us_soup, 'us')
+africa_df = handle_soup(africa_soup, 'africa')
 
 completed_df = pd.concat([europe_df, us_df, africa_df], ignore_index=True, axis=0)
 
@@ -97,4 +95,4 @@ completed_df = pd.concat([europe_df, us_df, africa_df], ignore_index=True, axis=
 print(completed_df)
 
 # Export the DataFrame to a .txt file
-completed_df.to_csv('nbcnews.csv', sep=", ", index=True)
+completed_df.to_csv('nbcnews.csv', sep=",", index=True)
