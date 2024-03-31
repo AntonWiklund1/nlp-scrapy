@@ -7,6 +7,10 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from tqdm import tqdm
+import requests_cache
+
+requests_cache.install_cache('nbc_news_cache', backend='sqlite', expire_after=1800)  # Cache for 30 minutes
+
 
 def scrape_news(continent):
     driver = webdriver.Chrome()
@@ -56,6 +60,9 @@ def handle_soup(soup, continent = 'unspecified'):
         if link:
             try:
                 article_response = requests.get(link)
+                # check if the request was from cache
+                if article_response.from_cache:
+                    print(f"Using cache for {link}")
                 article_soup = BeautifulSoup(article_response.text, 'html.parser')
                 time_element = article_soup.find('time', class_='relative z-1')
                 date = time_element['datetime'] if time_element and 'datetime' in time_element.attrs else 'Date not found'
