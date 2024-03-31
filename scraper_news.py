@@ -91,8 +91,9 @@ africa_df = handle_soup(africa_soup, 'africa')
 
 completed_df = pd.concat([europe_df, us_df, africa_df], ignore_index=True, axis=0)
 
-# Display the DataFrame
-print(completed_df)
+
+print("Done scraping news!")
+print(completed_df.head())
 
 # Export the DataFrame to a .txt file
 completed_df.to_csv('nbcnews.csv', sep=",", index=True)
