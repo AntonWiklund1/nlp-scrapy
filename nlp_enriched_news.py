@@ -24,6 +24,9 @@ vectorizer = joblib.load('./models/tfidf_vectorizer.pkl')
 # Load the data
 data = pd.read_csv('./data/news.csv')
 
+#load the keywords
+keywords = pd.read_csv('./data/environment_keywords.txt', header=None)[0].tolist()
+
 # Define functions
 def extract_entities(text):
     """Extract ORG entities from the text using SpaCy."""
@@ -53,9 +56,47 @@ def process_data(df):
     print("Analyzing sentiment of articles...")
     df['sentiment'] = df['body'].progress_apply(lambda x: sia.polarity_scores(x)['compound'])
     df['sentiment'] = df['sentiment'].apply(classify_compound_score)
+
+    print("Computing similarity to keywords...")
+    df['keyword_similarity'] = df['body'].progress_apply(lambda x: compute_similarity_to_keywords(x, keywords))
+
+    print("Analyzing environmental context...")
+    df = analyze_environmental_context(df, keywords)
+
+    print("Flagging scandalous articles...")
+    df = flag_scandal_articles(df)
     
-    # Reorder columns
-    df = df[['predicted_category', 'sentiment', 'entities', 'headline', 'link', 'date', 'body']]
+    # Reorder columns for better readability
+    df = df[['predicted_category', 'scandal_flag', 'sentiment', 'entities', 'headline', 'link', 'date', 'body', 'environmental_context',]]
+    
+    return df
+
+
+def compute_similarity_to_keywords(text, keywords):
+    """Compute the maximum similarity of the text to the given keywords."""
+    doc = nlp(text)
+    max_similarity = max(doc.similarity(nlp(keyword)) for keyword in keywords)
+    return max_similarity
+
+def entity_keyword_proximity(text, entities, keywords):
+    doc = nlp(text)
+    proximity_scores = []
+    for sent in doc.sents:
+        if any(ent.text in entities for ent in sent.ents):
+            sent_keywords = [keyword for keyword in keywords if keyword in sent.text.lower()]
+            if sent_keywords:
+                score = sia.polarity_scores(sent.text)['compound']
+                proximity_scores.append((sent.text, sent_keywords, score))
+    return proximity_scores
+
+def analyze_environmental_context(df, keywords):
+    df['environmental_context'] = df.progress_apply(
+        lambda x: entity_keyword_proximity(x['body'], x['entities'], keywords), axis=1)
+    return df
+
+def flag_scandal_articles(df):
+    df['scandal_flag'] = df.apply(
+        lambda x: any(item[2] < -0.5 for item in x['environmental_context']) and x['keyword_similarity'] > 0.7, axis=1)
     return df
 
 # Apply the processing to the data
