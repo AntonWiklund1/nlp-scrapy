@@ -13,7 +13,7 @@ warnings.filterwarnings('ignore')
 train_df = pd.read_csv('./data/bbc_news_train.csv')
 test_df = pd.read_csv('./data/bbc_news_tests.csv')
 
-# Assuming the structure is ['text', 'label'] where 'text' is the article and 'label' is the category
+
 X_train = train_df['Text']
 y_train = train_df['Category']
 X_test = test_df['Text']
