@@ -8,7 +8,7 @@ from pathlib import Path
 import warnings
 warnings.filterwarnings('ignore')
 from colorama import Fore, Style, init
-init()
+init() # Initialize colorama for Windows
 
 # No need to manually download the VADER lexicon every time if already downloaded
 # nltk.download('vader_lexicon')  # Should be commented out after first use
