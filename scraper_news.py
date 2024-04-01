@@ -103,4 +103,4 @@ print("Done scraping news!")
 print(completed_df.head())
 
 # Export the DataFrame to a .txt file
-completed_df.to_csv('nbcnews.csv', sep=",", index=True)
+completed_df.to_csv('./data/news.csv', sep=",", index=True)
