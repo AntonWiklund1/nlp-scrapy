@@ -9,6 +9,16 @@ import warnings
 warnings.filterwarnings('ignore')
 from colorama import Fore, Style, init
 init() # Initialize colorama for Windows
+from transformers import pipeline, RobertaTokenizer, RobertaForSequenceClassification
+
+
+tokenizer = RobertaTokenizer.from_pretrained("cardiffnlp/twitter-roberta-base-sentiment")
+model = RobertaForSequenceClassification.from_pretrained("cardiffnlp/twitter-roberta-base-sentiment")
+
+roberta_sentiment = pipeline("sentiment-analysis", model=model, tokenizer=tokenizer, return_all_scores=False)
+
+
+# Load the summarization pipeline
 
 # No need to manually download the VADER lexicon every time if already downloaded
 # nltk.download('vader_lexicon')  # Should be commented out after first use
@@ -33,44 +43,22 @@ def extract_entities(text):
     doc = nlp(text)
     return [ent.text for ent in doc.ents if ent.label_ == 'ORG']
 
-def classify_compound_score(compound_score, threshold=0.05):
-    """Classify the sentiment based on the compound score from VADER."""
-    if compound_score > threshold:
-        return 'Positive'
-    elif compound_score < -threshold:
+def classify_compound_score(text):
+    """Classify the sentiment based on RoBERTa's analysis."""
+    # Ensure text is within the model's maximum input length
+    text = text[:512]  # Truncate text to maximum input length of the model
+    
+    # Get the predicted sentiment
+    result = roberta_sentiment(text)
+
+    # Map the sentiment to a human-readable label
+    sentiment = result[0]['label']
+    if sentiment == 'LABEL_0':
         return 'Negative'
+    elif sentiment == 'LABEL_2':
+        return 'Positive'
     else:
         return 'Neutral'
-
-# Main processing
-def process_data(df):
-    """Process the data to add entities, predicted categories, and sentiment."""
-    tqdm.pandas()  # Initialize tqdm for pandas apply
-    print("Extracting entities from headlines and bodies...")
-    df['entities'] = df['headline'].progress_apply(extract_entities) + df['body'].progress_apply(extract_entities)
-    
-    print("Predicting article categories...")
-    texts_vect = vectorizer.transform(df['body'])  # Transform to TF-IDF vector
-    df['predicted_category'] = classifier.predict(texts_vect)  # Predict categories
-    
-    print("Analyzing sentiment of articles...")
-    df['sentiment'] = df['body'].progress_apply(lambda x: sia.polarity_scores(x)['compound'])
-    df['sentiment'] = df['sentiment'].apply(classify_compound_score)
-
-    print("Computing similarity to keywords...")
-    df['keyword_similarity'] = df['body'].progress_apply(lambda x: compute_similarity_to_keywords(x, keywords))
-
-    print("Analyzing environmental context...")
-    df = analyze_environmental_context(df, keywords)
-
-    print("Flagging scandalous articles...")
-    df = flag_scandal_articles(df)
-    
-    # Reorder columns for better readability
-    df = df[['predicted_category', 'scandal_flag', 'sentiment', 'entities', 'headline', 'link', 'date', 'body', 'environmental_context',]]
-    
-    return df
-
 
 def compute_similarity_to_keywords(text, keywords):
     """Compute the maximum similarity of the text to the given keywords."""
@@ -96,7 +84,37 @@ def analyze_environmental_context(df, keywords):
 
 def flag_scandal_articles(df):
     df['scandal_flag'] = df.apply(
-        lambda x: any(item[2] < -0.5 for item in x['environmental_context']) and x['keyword_similarity'] > 0.7, axis=1)
+        lambda x: any(item[2] < -0.7 for item in x['environmental_context']) and x['keyword_similarity'] > 0.7, axis=1)
+    return df
+
+# Main processing
+def process_data(df):
+    """Process the data to add entities, predicted categories, and sentiment."""
+    tqdm.pandas()  # Initialize tqdm for pandas apply
+    print("Extracting entities from headlines and bodies...")
+    df['entities'] = df['headline'].progress_apply(extract_entities) + df['body'].progress_apply(extract_entities)
+    
+    print("Predicting article categories...")
+    texts_vect = vectorizer.transform(df['body'])  # Transform to TF-IDF vector
+    df['predicted_category'] = classifier.predict(texts_vect)  # Predict categories
+    
+    print("Analyzing sentiment of articles...")
+    # Use RoBERTa for sentiment analysis
+    df['sentiment'] = df['body'].progress_apply(classify_compound_score)
+
+
+    print("Computing similarity to keywords...")
+    df['keyword_similarity'] = df['body'].progress_apply(lambda x: compute_similarity_to_keywords(x, keywords))
+
+    print("Analyzing environmental context...")
+    df = analyze_environmental_context(df, keywords)
+
+    print("Flagging scandalous articles...")
+    df = flag_scandal_articles(df)
+    
+    # Reorder columns for better readability
+    df = df[['predicted_category', 'scandal_flag', 'sentiment', 'entities', 'headline', 'link', 'date', 'body', 'environmental_context',]]
+    
     return df
 
 # Apply the processing to the data
