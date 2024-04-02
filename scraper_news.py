@@ -13,7 +13,9 @@ requests_cache.install_cache('nbc_news_cache', backend='sqlite', expire_after=18
 
 
 def scrape_news(continent):
-    driver = webdriver.Chrome()
+    options = webdriver.ChromeOptions()
+    options.add_argument('--headless')  # Run Chrome in headless mode
+    driver = webdriver.Chrome(options=options)
     driver.get(f'https://www.nbcnews.com/news/{continent}')
 
     # Click the "Load More" button a specified number of times
@@ -60,9 +62,6 @@ def handle_soup(soup, continent = 'unspecified'):
         if link:
             try:
                 article_response = requests.get(link)
-                # check if the request was from cache
-                if article_response.from_cache:
-                    print(f"Using cache for {link}")
                 article_soup = BeautifulSoup(article_response.text, 'html.parser')
                 time_element = article_soup.find('time', class_='relative z-1')
                 date = time_element['datetime'] if time_element and 'datetime' in time_element.attrs else 'Date not found'
@@ -98,9 +97,13 @@ africa_df = handle_soup(africa_soup, 'africa')
 
 completed_df = pd.concat([europe_df, us_df, africa_df], ignore_index=True, axis=0)
 
+fixed_scandals = pd.read_csv('./data/example_scandals_fixed.csv')
+
 
 print("Done scraping news!")
 print(completed_df.head())
+
+completed_df = pd.concat([completed_df, fixed_scandals], ignore_index=True, axis=0)
 
 # Export the DataFrame to a .txt file
 completed_df.to_csv('./data/news.csv', sep=",", index=True)
