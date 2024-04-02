@@ -67,6 +67,19 @@ def compute_similarity_to_keywords(text, keyword_embeddings):
         # If text is empty, return a default similarity that indicates no similarity.
         # Adjust this behavior as needed for your application.
         return 0
+    
+def find_scandals(keyword_similarity, entities, sentiment):
+    """
+        Find potential scandals in the text.
+        based on the keyword_similarity and entities.
+    """
+
+    if keyword_similarity > 0.4 and len(entities) > 0 and sentiment == 'Negative':
+        return 'Scandal'
+    elif keyword_similarity > 0.1 and len(entities) > 0 and sentiment == 'Negative':
+        return 'Scandal'
+    else:
+        return 'Normal'
 
 # Main processing
 def process_data(df):
@@ -86,9 +99,11 @@ def process_data(df):
     print("Computing similarity to keywords...")
     df['keyword_similarity'] = df['headline'].progress_apply(lambda x: compute_similarity_to_keywords(x, keyword_embeddings))
 
+    print("Finding potential scandals...")
+    df['scandal'] = df.progress_apply(lambda x: find_scandals(x['keyword_similarity'], x['entities'], x['sentiment']), axis=1)
 
     # Reorder columns for better readability
-    df = df[['predicted_category', 'sentiment', 'entities', 'headline', 'link', 'date', 'body', 'keyword_similarity',]]
+    df = df[['predicted_category', 'sentiment', 'entities', 'headline', 'link', 'date', 'body', 'keyword_similarity','scandal']]
     
     return df
 
