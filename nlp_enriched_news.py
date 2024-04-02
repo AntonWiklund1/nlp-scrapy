@@ -53,20 +53,18 @@ def classify_compound_score(text):
     else:
         return 'Neutral'
 
-def compute_similarity_to_keywords(text, keyword_embeddings):
-    """Compute similarity of a text to environmental keywords."""
-    # Ensure the text is not empty
+def compute_similarity_and_keyword(text, keyword_embeddings, keywords):
+    """Compute similarity of text to environmental keywords and return the most similar keyword."""
     if text:
-        text_embedding = sentence_model.encode([text])  # Ensure text is in a list for consistent output shape
+        text_embedding = sentence_model.encode([text])
         if text_embedding.ndim == 1:
-            # If the embedding is 1D (happens if a single sentence is passed), reshape it to be 2D
             text_embedding = text_embedding.reshape(1, -1)
         similarities = scipy.spatial.distance.cdist(text_embedding, keyword_embeddings, "cosine")[0]
-        return 1 - min(similarities)  # Since 'cosine' gives distance, convert to similarity
+        max_similarity = 1 - min(similarities)
+        most_similar_keyword = keywords[similarities.argmin()]  # Get the most similar keyword
+        return max_similarity, most_similar_keyword
     else:
-        # If text is empty, return a default similarity that indicates no similarity.
-        # Adjust this behavior as needed for your application.
-        return 0
+        return 0, None
     
 def find_scandals(keyword_similarity, entities, sentiment):
     """
@@ -97,13 +95,14 @@ def process_data(df):
     df['sentiment'] = df['headline'].progress_apply(classify_compound_score)
 
     print("Computing similarity to keywords...")
-    df['keyword_similarity'] = df['headline'].progress_apply(lambda x: compute_similarity_to_keywords(x, keyword_embeddings))
+    similarity_and_keyword = df['body'].progress_apply(lambda x: compute_similarity_and_keyword(x, keyword_embeddings, keywords))
+    df['keyword_similarity'], df['most_similar_keyword'] = zip(*similarity_and_keyword)
 
     print("Finding potential scandals...")
     df['scandal'] = df.progress_apply(lambda x: find_scandals(x['keyword_similarity'], x['entities'], x['sentiment']), axis=1)
 
     # Reorder columns for better readability
-    df = df[['predicted_category', 'sentiment', 'entities', 'headline', 'link', 'date', 'body', 'keyword_similarity','scandal']]
+    df = df[['predicted_category', 'sentiment', 'entities', 'headline', 'link', 'date', 'body', 'keyword_similarity','scandal','most_similar_keyword']]
     
     return df
 
