@@ -1,41 +1,40 @@
+
+from pathlib import Path
+from sentence_transformers import SentenceTransformer
+import scipy.spatial
 import spacy
 import pandas as pd
 import joblib
 from tqdm.auto import tqdm
-import nltk
-from nltk.sentiment import SentimentIntensityAnalyzer
-from pathlib import Path
+from transformers import pipeline, RobertaTokenizer, RobertaForSequenceClassification
 import warnings
 warnings.filterwarnings('ignore')
 from colorama import Fore, Style, init
-init() # Initialize colorama for Windows
-from transformers import pipeline, RobertaTokenizer, RobertaForSequenceClassification
+init()  # Initialize colorama for Windows
 
 
-tokenizer = RobertaTokenizer.from_pretrained("cardiffnlp/twitter-roberta-base-sentiment")
-model = RobertaForSequenceClassification.from_pretrained("cardiffnlp/twitter-roberta-base-sentiment")
-
-roberta_sentiment = pipeline("sentiment-analysis", model=model, tokenizer=tokenizer, return_all_scores=False)
+# Initialize the models for embeddings 
+sentence_model = SentenceTransformer('all-MiniLM-L6-v2')
 
 
-# Load the summarization pipeline
+# Load the RoBERTa model for sentiment analysis
+roberta_tokenizer = RobertaTokenizer.from_pretrained("cardiffnlp/twitter-roberta-base-sentiment")
+roberta_model = RobertaForSequenceClassification.from_pretrained("cardiffnlp/twitter-roberta-base-sentiment")
+roberta_sentiment = pipeline("sentiment-analysis", model=roberta_model, tokenizer=roberta_tokenizer, return_all_scores=False)
 
-# No need to manually download the VADER lexicon every time if already downloaded
-# nltk.download('vader_lexicon')  # Should be commented out after first use
+# Load other necessary libraries and models
+nlp = spacy.load('en_core_web_lg')  # For entity extraction
 
-# Initialize NLP models
-nlp = spacy.load('en_core_web_lg')
-sia = SentimentIntensityAnalyzer()
-
-# Load the models
+# Load the models for topic classification
 classifier = joblib.load('./models/news_classifier.pkl')
 vectorizer = joblib.load('./models/tfidf_vectorizer.pkl')
 
-# Load the data
+# Load the data and keywords
 data = pd.read_csv('./data/news.csv')
-
-#load the keywords
 keywords = pd.read_csv('./data/environment_keywords.txt', header=None)[0].tolist()
+
+# Compute embeddings for the keywords
+keyword_embeddings = sentence_model.encode(keywords)
 
 # Define functions
 def extract_entities(text):
@@ -45,13 +44,7 @@ def extract_entities(text):
 
 def classify_compound_score(text):
     """Classify the sentiment based on RoBERTa's analysis."""
-    # Ensure text is within the model's maximum input length
-    text = text[:512]  # Truncate text to maximum input length of the model
-    
-    # Get the predicted sentiment
     result = roberta_sentiment(text)
-
-    # Map the sentiment to a human-readable label
     sentiment = result[0]['label']
     if sentiment == 'LABEL_0':
         return 'Negative'
@@ -60,32 +53,20 @@ def classify_compound_score(text):
     else:
         return 'Neutral'
 
-def compute_similarity_to_keywords(text, keywords):
-    """Compute the maximum similarity of the text to the given keywords."""
-    doc = nlp(text)
-    max_similarity = max(doc.similarity(nlp(keyword)) for keyword in keywords)
-    return max_similarity
-
-def entity_keyword_proximity(text, entities, keywords):
-    doc = nlp(text)
-    proximity_scores = []
-    for sent in doc.sents:
-        if any(ent.text in entities for ent in sent.ents):
-            sent_keywords = [keyword for keyword in keywords if keyword in sent.text.lower()]
-            if sent_keywords:
-                score = sia.polarity_scores(sent.text)['compound']
-                proximity_scores.append((sent.text, sent_keywords, score))
-    return proximity_scores
-
-def analyze_environmental_context(df, keywords):
-    df['environmental_context'] = df.progress_apply(
-        lambda x: entity_keyword_proximity(x['body'], x['entities'], keywords), axis=1)
-    return df
-
-def flag_scandal_articles(df):
-    df['scandal_flag'] = df.apply(
-        lambda x: any(item[2] < -0.7 for item in x['environmental_context']) and x['keyword_similarity'] > 0.7, axis=1)
-    return df
+def compute_similarity_to_keywords(text, keyword_embeddings):
+    """Compute similarity of a text to environmental keywords."""
+    # Ensure the text is not empty
+    if text:
+        text_embedding = sentence_model.encode([text])  # Ensure text is in a list for consistent output shape
+        if text_embedding.ndim == 1:
+            # If the embedding is 1D (happens if a single sentence is passed), reshape it to be 2D
+            text_embedding = text_embedding.reshape(1, -1)
+        similarities = scipy.spatial.distance.cdist(text_embedding, keyword_embeddings, "cosine")[0]
+        return 1 - min(similarities)  # Since 'cosine' gives distance, convert to similarity
+    else:
+        # If text is empty, return a default similarity that indicates no similarity.
+        # Adjust this behavior as needed for your application.
+        return 0
 
 # Main processing
 def process_data(df):
@@ -100,20 +81,14 @@ def process_data(df):
     
     print("Analyzing sentiment of articles...")
     # Use RoBERTa for sentiment analysis
-    df['sentiment'] = df['body'].progress_apply(classify_compound_score)
-
+    df['sentiment'] = df['headline'].progress_apply(classify_compound_score)
 
     print("Computing similarity to keywords...")
-    df['keyword_similarity'] = df['body'].progress_apply(lambda x: compute_similarity_to_keywords(x, keywords))
+    df['keyword_similarity'] = df['headline'].progress_apply(lambda x: compute_similarity_to_keywords(x, keyword_embeddings))
 
-    print("Analyzing environmental context...")
-    df = analyze_environmental_context(df, keywords)
 
-    print("Flagging scandalous articles...")
-    df = flag_scandal_articles(df)
-    
     # Reorder columns for better readability
-    df = df[['predicted_category', 'scandal_flag', 'sentiment', 'entities', 'headline', 'link', 'date', 'body', 'environmental_context',]]
+    df = df[['predicted_category', 'sentiment', 'entities', 'headline', 'link', 'date', 'body', 'keyword_similarity',]]
     
     return df
 
