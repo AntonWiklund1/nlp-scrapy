@@ -1,80 +1,128 @@
+import torch
+from torchtext.data.utils import get_tokenizer
+from torchtext.vocab import build_vocab_from_iterator
+from sklearn.model_selection import train_test_split
 import pandas as pd
-import numpy as np
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.neural_network import MLPClassifier
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
-from sklearn.model_selection import learning_curve, GridSearchCV
-import matplotlib.pyplot as plt
-import joblib
-import warnings
-warnings.filterwarnings('ignore')
+from torch.utils.data import DataLoader, Dataset
+from torch.optim import Adam
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.nn.utils.rnn import pad_sequence
 
-def load_data(train_path, test_path):
-    train_df = pd.read_csv(train_path)
-    test_df = pd.read_csv(test_path)
-    X_train, y_train = train_df['Text'], train_df['Category']
-    X_test, y_test = test_df['Text'], test_df['Category']
-    return X_train, y_train, X_test, y_test
+def yield_tokens(data_iter):
+    tokenizer = get_tokenizer("basic_english")
+    for text in data_iter:
+        yield tokenizer(text)
 
-def preprocess_data(X_train, X_test):
-    vectorizer = TfidfVectorizer(stop_words='english', max_features=1000)
-    X_train_vect = vectorizer.fit_transform(X_train)
-    X_test_vect = vectorizer.transform(X_test)
-    return X_train_vect, X_test_vect, vectorizer
+# Load data and prepare vocab
+def prepare_data_and_vocab():
+    train_df = pd.read_csv('./data/bbc_news_train.csv')
+    tokenizer = get_tokenizer('basic_english')
+    vocab = build_vocab_from_iterator(yield_tokens(train_df['Text']), specials=["<unk>"])
+    vocab.set_default_index(vocab["<unk>"])
+    return train_df, vocab, tokenizer
 
-def train_model(X_train_vect, y_train):
-    classifier = MLPClassifier(hidden_layer_sizes=(100,), max_iter=1000)
-    classifier.fit(X_train_vect, y_train)
-    return classifier
+def text_pipeline(x, vocab):
+    tokenizer = get_tokenizer("basic_english")
+    return [vocab[token] for token in tokenizer(x)]
 
-def evaluate_model(classifier, X_test_vect, y_test):
-    y_pred = classifier.predict(X_test_vect)
-    accuracy = accuracy_score(y_test, y_pred)
-    print(f"Accuracy: {accuracy}")
-    print("Classification Report:")
-    print(classification_report(y_test, y_pred))
-    print("Confusion Matrix:")
-    print(confusion_matrix(y_test, y_pred))
-
-def plot_learning_curve(X_train_vect, y_train):
-    train_sizes, train_scores, validation_scores = learning_curve(
-        estimator=MLPClassifier(hidden_layer_sizes=(100,), max_iter=1000),
-        X=X_train_vect,
-        y=y_train,
-        train_sizes=np.linspace(0.1, 1.0, 10),
-        cv=5,
-        scoring='accuracy',
-        n_jobs=-1
-    )
+class NewsDataset(Dataset):
+    def __init__(self, texts, labels, vocab):
+        self.texts = texts
+        self.labels = labels
+        self.vocab = vocab
     
-    train_scores_mean = np.mean(train_scores, axis=1)
-    validation_scores_mean = np.mean(validation_scores, axis=1)
+    def __len__(self):
+        return len(self.texts)
     
-    plt.figure()
-    plt.title("Learning Curves")
-    plt.xlabel("Training examples")
-    plt.ylabel("Score")
-    plt.plot(train_sizes, train_scores_mean, label="Training score")
-    plt.plot(train_sizes, validation_scores_mean, label="Cross-validation score")
-    plt.legend(loc="best")
-    plt.grid()
-    plt.savefig('./results/learning_curves.png')
-    print("Learning curve saved successfully.")
+    def __getitem__(self, idx):
+        text = torch.tensor(text_pipeline(self.texts.iloc[idx], self.vocab), dtype=torch.int64)
+        label = torch.tensor(self.labels.iloc[idx], dtype=torch.int64)
+        return text, label
 
-def save_models(classifier, vectorizer):
-    joblib.dump(classifier, './models/news_classifier.pkl')
-    joblib.dump(vectorizer, './models/tfidf_vectorizer.pkl')
-    print("Models saved successfully.")
+def collate_batch(batch):
+    label_list, text_list = [], []
+    for _text, _label in batch:
+        # Ensure text is not empty
+        if len(_text) > 0:
+            text_list.append(_text)
+            label_list.append(_label)
+    # Safety check for empty batch or text_list
+    if len(text_list) == 0:
+        raise ValueError("No valid text found in batch to pad.")
+    # Padding text sequences
+    text_list = pad_sequence(text_list, batch_first=True, padding_value=0)
+    label_list = torch.tensor(label_list, dtype=torch.int64)
+    return text_list, label_list
+
+# Define the model
+class TextClassifier(nn.Module):
+    def __init__(self, vocab_size, embed_dim, num_class):
+        super(TextClassifier, self).__init__()
+        self.embedding = nn.Embedding(vocab_size, embed_dim)
+        self.dropout = nn.Dropout(0.5)
+        self.fc1 = nn.Linear(embed_dim, 128)
+        self.fc2 = nn.Linear(128, num_class)
+    
+    def forward(self, text):
+        embedded = self.embedding(text).mean(dim=1)
+        hidden = F.leaky_relu(self.fc1(embedded))
+        return self.fc2(hidden)
+
+def train(dataloader, model, loss_fn, optimizer):
+    model.train()
+    for batch, (X, y) in enumerate(dataloader):
+        pred = model(X)
+        loss = loss_fn(pred, y)
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        if batch % 100 == 0:
+            loss = loss.item()
+            print(f"Train loss: {loss:>7f}")
+
+
+def evaluate(dataloader, model, loss_fn):
+    model.eval()
+    total_acc, total_count = 0, 0
+    with torch.no_grad():
+        for X, y in dataloader:
+            pred = model(X)
+            loss = loss_fn(pred, y)
+            total_acc += (pred.argmax(1) == y).sum().item()
+            total_count += y.size(0)
+    accuracy = total_acc / total_count
+    print(f'Validation Accuracy: {(accuracy * 100):>0.1f}%, Avg loss: {loss:>8f} \n')
 
 def main():
-    train_path = './data/bbc_news_train.csv'
-    test_path = './data/bbc_news_tests.csv'
-    X_train, y_train, X_test, y_test = load_data(train_path, test_path)
-    X_train_vect, X_test_vect, vectorizer = preprocess_data(X_train, X_test)
-    classifier = train_model(X_train_vect, y_train)
-    evaluate_model(classifier, X_test_vect, y_test)
-    plot_learning_curve(X_train_vect, y_train)
-    save_models(classifier, vectorizer)
+
+    train_df, vocab, tokenizer = prepare_data_and_vocab()
+    unique_categories = train_df['Category'].unique()
+    category_to_int = {category: index for index, category in enumerate(unique_categories)}
+
+
+    train_df['Category'] = train_df['Category'].map(category_to_int)
+
+    X_train, X_val, y_train, y_val = train_test_split(train_df['Text'], train_df['Category'], test_size=0.2, random_state=42)
+
+    train_dataset = NewsDataset(X_train.reset_index(drop=True), y_train.reset_index(drop=True), vocab)
+    val_dataset = NewsDataset(X_val.reset_index(drop=True), y_val.reset_index(drop=True), vocab)
+    train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True, collate_fn=collate_batch)
+    val_loader = DataLoader(val_dataset, batch_size=16, collate_fn=collate_batch)
+    
+    model = TextClassifier(len(vocab), embed_dim=100, num_class=len(set(train_df['Category'])))
+    loss_fn = nn.CrossEntropyLoss()
+    optimizer = Adam(model.parameters(), lr=0.001)
+    
+    epochs = 100
+    for epoch in range(epochs):
+        print(f"Epoch {epoch+1}\n-------------------------------")
+        train(train_loader, model, loss_fn, optimizer)
+        evaluate(val_loader, model, loss_fn)
+    print("Training complete!")
+
+    # Save the model
+    torch.save(model.state_dict(), "text_classifier.pth")
 
 if __name__ == "__main__":
     main()
