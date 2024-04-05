@@ -157,7 +157,5 @@ def main():
     with open('vocab.pkl', 'wb') as vocab_file:
         pickle.dump(vocab, vocab_file)
 
-
-
 if __name__ == "__main__":
     main()
