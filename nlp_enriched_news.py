@@ -8,14 +8,61 @@ import joblib
 from tqdm.auto import tqdm
 from transformers import pipeline, RobertaTokenizer, RobertaForSequenceClassification
 import warnings
+from torchtext.data.utils import get_tokenizer
+
+
+from training_model import TextClassifier
 warnings.filterwarnings('ignore')
 from colorama import Fore, Style, init
 init()  # Initialize colorama for Windows
+import torch
+from torch.utils.data import DataLoader, Dataset
+import torch.nn as nn
+from torch.nn.utils.rnn import pad_sequence 
+import constants
+
+from torchtext.vocab import build_vocab_from_iterator
+from torchtext.data.utils import get_tokenizer
+
+import pickle
+
+import redis
+
 
 
 # Initialize the models for embeddings 
 sentence_model = SentenceTransformer('all-MiniLM-L6-v2')
 
+# Assume these are defined or loaded appropriately
+ 
+embed_dim = constants.emded_dim
+num_class = constants.num_class
+
+def yield_tokens(data_iter):
+    tokenizer = get_tokenizer("basic_english")
+    for text in data_iter:
+        yield tokenizer(text)
+# Loading the dictionary back
+
+with open('vocab.pkl', 'rb') as vocab_file:
+    vocab = pickle.load(vocab_file)
+
+with open('category_to_int.pkl', 'rb') as handle:
+    category_to_int = pickle.load(handle)
+
+
+
+vocab_size = len(vocab)
+
+# This assumes you also have the tokenizer and vocab ready
+def text_pipeline(x, vocab):
+    tokenizer = get_tokenizer("basic_english")
+    return [vocab[token] for token in tokenizer(x)]
+
+# Recreate the model structure
+model = TextClassifier(vocab_size, embed_dim, num_class)
+model.load_state_dict(torch.load("best_text_classifier.pth"))
+model.eval()  # Set the model to evaluation mode
 
 # Load the RoBERTa model for sentiment analysis
 roberta_tokenizer = RobertaTokenizer.from_pretrained("cardiffnlp/twitter-roberta-base-sentiment")
@@ -26,7 +73,6 @@ roberta_sentiment = pipeline("sentiment-analysis", model=roberta_model, tokenize
 nlp = spacy.load('en_core_web_lg')  # For entity extraction
 
 # Load the models for topic classification
-classifier = joblib.load('./models/news_classifier.pkl')
 vectorizer = joblib.load('./models/tfidf_vectorizer.pkl')
 
 # Load the data and keywords
@@ -52,6 +98,21 @@ def classify_compound_score(text):
         return 'Positive'
     else:
         return 'Neutral'
+    
+def pre_process_data(df):
+    """Pre-process the data by removing missing values and duplicates."""
+    # Remove missing values
+    df = df.dropna(subset=['headline', 'body'])
+    # Remove duplicates
+    df = df.drop_duplicates(subset=['headline', 'body'])
+
+    #remove links from the body
+    df['body'] = df['body'].str.replace(r'http\S+', '', case=False)
+
+    #Remove images from the body
+    df['body'] = df['body'].str.replace(r'\w*\.(?:jpg|gif|png)', '', case=False)
+
+    return df
 
 def compute_similarity_and_keyword(text, keyword_embeddings, keywords):
     """Compute similarity of text to environmental keywords and return the most similar keyword."""
@@ -79,21 +140,41 @@ def find_scandals(keyword_similarity, entities, sentiment):
     else:
         return 'Normal'
 
+# Predict categories with confidence threshold
+def predict_categories(df, threshold=0.6):
+    int_to_category = {v: k for k, v in category_to_int.items()}
+    print("Predicting article categories with confidence scores...")
+    results = []
+    for text in df['body']:
+        text_tensor = torch.tensor(text_pipeline(text, vocab), dtype=torch.int64).unsqueeze(0)  # Add batch dimension
+        with torch.no_grad():
+            probabilities = torch.softmax(model(text_tensor), dim=1)
+            max_prob, predicted_category = torch.max(probabilities, dim=1)
+            if max_prob.item() >= threshold:
+                results.append((int_to_category[predicted_category.item()], max_prob.item()))  # Convert to category name here
+            else:
+                results.append((None, max_prob.item()))  # Use None or a placeholder if confidence is below threshold
+    # Assuming df has an index that's aligned with the iteration order
+    df['predicted_category'] = [res[0] for res in results]  # This will now hold the category names
+    df['confidence'] = [res[1] for res in results]
+    return df[df['predicted_category'].notnull()]  # Return only confident predictions
+
 # Main processing
 def process_data(df):
     """Process the data to add entities, predicted categories, and sentiment."""
     tqdm.pandas()  # Initialize tqdm for pandas apply
+
+    df = pre_process_data(df)
     print("Extracting entities from headlines and bodies...")
     df['entities'] = df['headline'].progress_apply(extract_entities) + df['body'].progress_apply(extract_entities)
     
-    print("Predicting article categories...")
-    texts_vect = vectorizer.transform(df['body'])  # Transform to TF-IDF vector
-    df['predicted_category'] = classifier.predict(texts_vect)  # Predict categories
+    # Process data with confidence threshold
+    df = predict_categories(df)
     
     print("Analyzing sentiment of articles...")
     # Use RoBERTa for sentiment analysis
     df['sentiment'] = df['headline'].progress_apply(classify_compound_score)
-
+    
     print("Computing similarity to keywords...")
     similarity_and_keyword = df['body'].progress_apply(lambda x: compute_similarity_and_keyword(x, keyword_embeddings, keywords))
     df['keyword_similarity'], df['most_similar_keyword'] = zip(*similarity_and_keyword)
