@@ -9,6 +9,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence
 from sklearn.model_selection import KFold
+from joblib import Parallel, delayed
+import constants
+import pickle
+
+
 
 
 
@@ -64,8 +69,8 @@ class TextClassifier(nn.Module):
         super(TextClassifier, self).__init__()
         self.embedding = nn.Embedding(vocab_size, embed_dim)
         self.dropout = nn.Dropout(0.5)
-        self.fc1 = nn.Linear(embed_dim, 128)
-        self.fc2 = nn.Linear(128, num_class)
+        self.fc1 = nn.Linear(embed_dim, 200)
+        self.fc2 = nn.Linear(200, num_class)
     
     def forward(self, text):
         embedded = self.embedding(text).mean(dim=1)
@@ -84,41 +89,42 @@ def train(dataloader, model, loss_fn, optimizer):
             loss = loss.item()
             print(f"Train loss: {loss:>7f}")
 
-
 def evaluate(dataloader, model, loss_fn):
     model.eval()
-    total_acc, total_count = 0, 0
+    total_acc, total_count, total_loss = 0, 0, 0.0
     with torch.no_grad():
         for X, y in dataloader:
             pred = model(X)
             loss = loss_fn(pred, y)
+            total_loss += loss.item() * X.size(0)
             total_acc += (pred.argmax(1) == y).sum().item()
             total_count += y.size(0)
     accuracy = total_acc / total_count
-    print(f'Validation Accuracy: {(accuracy * 100):>0.1f}%, Avg loss: {loss:>8f}')
-    return accuracy
+    avg_loss = total_loss / total_count
+    print(f'Validation Accuracy: {(accuracy * 100):>0.1f}%, Avg loss: {avg_loss:>8f}')
+    return accuracy, avg_loss
 
 def main():
+
     # Load data and prepare vocab
     train_df, vocab, tokenizer = prepare_data_and_vocab()
     
     # Convert categories to integer labels
     unique_categories = train_df['Category'].unique()
     category_to_int = {category: index for index, category in enumerate(unique_categories)}
-    train_df['Category'] = train_df['Category'].map(category_to_int)
+    with open('category_to_int.pkl', 'wb') as handle:
+        pickle.dump(category_to_int, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
+    train_df['Category'] = train_df['Category'].map(category_to_int)
     # Prepare the full dataset
     full_dataset = NewsDataset(train_df['Text'].reset_index(drop=True), 
                                train_df['Category'].reset_index(drop=True), vocab)
-
     # K-Fold Cross-Validation
     kfold = KFold(n_splits=10, shuffle=True, random_state=42)
-
     best_accuracy = 0.0
     best_fold = 0
-
     for fold, (train_ids, val_ids) in enumerate(kfold.split(full_dataset)):
-        print(f"FOLD {fold}")        
+        print(f"FOLD {fold}")
         # Split dataset into training and validation
         train_subsampler = torch.utils.data.SubsetRandomSampler(train_ids)
         val_subsampler = torch.utils.data.SubsetRandomSampler(val_ids)
@@ -127,27 +133,31 @@ def main():
         val_loader = DataLoader(full_dataset, batch_size=16, sampler=val_subsampler, collate_fn=collate_batch)
         
         # Define the model, loss function, and optimizer
-        model = TextClassifier(len(vocab), embed_dim=100, num_class=len(set(train_df['Category'])))
+        model = TextClassifier(len(vocab), constants.emded_dim, constants.num_class)
         loss_fn = nn.CrossEntropyLoss()
         optimizer = AdamW(model.parameters(), lr=0.001, weight_decay=1e-2)  # Example weight_decay
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', factor=0.1, patience=10, verbose=True)
+
         
         # Training and Validation for the current fold
         for epoch in range(100):  # Adjust the number of epochs if necessary
-            print(f" \n--------------------------\nEpoch {epoch + 1} in fold: {fold}")
+            print(f" \n\n--------------------------\nEpoch {epoch + 1} in fold: {fold}")
             train(train_loader, model, loss_fn, optimizer)
-            accuracy = evaluate(val_loader, model, loss_fn)
+            accuracy, val_loss = evaluate(val_loader, model, loss_fn)
+            scheduler.step(val_loss)
             if accuracy > best_accuracy:
                 best_accuracy = accuracy
                 best_fold = fold
                 print(f"New best model found at epoch {epoch + 1} of fold {fold} with accuracy: {(best_accuracy * 100):>0.1f}%")
                 # Save the model
                 torch.save(model.state_dict(), "best_text_classifier.pth")
-
-        
         print("Training complete for fold!")
-
     print("Training complete!")
     print(f"Best accuracy: {(best_accuracy * 100):>0.1f}% in fold {best_fold}")
+    with open('vocab.pkl', 'wb') as vocab_file:
+        pickle.dump(vocab, vocab_file)
+
+
 
 if __name__ == "__main__":
     main()
