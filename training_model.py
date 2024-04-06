@@ -12,6 +12,9 @@ from sklearn.model_selection import KFold
 from joblib import Parallel, delayed
 import constants
 import pickle
+import matplotlib.pyplot as plt
+from torch.optim.lr_scheduler import OneCycleLR
+from colorama import Fore, Style, init
 
 
 
@@ -79,15 +82,19 @@ class TextClassifier(nn.Module):
 
 def train(dataloader, model, loss_fn, optimizer):
     model.train()
+    total_loss, total_count = 0.0, 0
     for batch, (X, y) in enumerate(dataloader):
         pred = model(X)
         loss = loss_fn(pred, y)
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-        if batch % 100 == 0:
-            loss = loss.item()
-            print(f"Train loss: {loss:>7f}")
+        total_loss += loss.item() * X.size(0)
+        total_count += X.size(0)
+    avg_loss = total_loss / total_count
+    print(f"Training Loss: {loss:>8f}")
+    return avg_loss  # Return the average loss over the epoch
+
 
 def evaluate(dataloader, model, loss_fn):
     model.eval()
@@ -109,6 +116,8 @@ def main():
     # Load data and prepare vocab
     train_df, vocab, tokenizer = prepare_data_and_vocab()
     
+    
+
     # Convert categories to integer labels
     unique_categories = train_df['Category'].unique()
     category_to_int = {category: index for index, category in enumerate(unique_categories)}
@@ -120,11 +129,20 @@ def main():
     full_dataset = NewsDataset(train_df['Text'].reset_index(drop=True), 
                                train_df['Category'].reset_index(drop=True), vocab)
     # K-Fold Cross-Validation
-    kfold = KFold(n_splits=10, shuffle=True, random_state=42)
+    kfold = KFold(n_splits=5, shuffle=True, random_state=42)
     best_accuracy = 0.0
     best_fold = 0
+
     for fold, (train_ids, val_ids) in enumerate(kfold.split(full_dataset)):
         print(f"FOLD {fold}")
+
+        early_stopping_patience = 10  # Number of epochs to wait after last time validation loss improved.
+        early_stopping_counter = 0  # Counter for the epochs waited since last improvement.
+        best_val_loss = float('inf')  # Initialize the best validation loss as infinity.
+
+
+        train_losses, val_losses = [], []
+
         # Split dataset into training and validation
         train_subsampler = torch.utils.data.SubsetRandomSampler(train_ids)
         val_subsampler = torch.utils.data.SubsetRandomSampler(val_ids)
@@ -136,26 +154,51 @@ def main():
         model = TextClassifier(len(vocab), constants.emded_dim, constants.num_class)
         loss_fn = nn.CrossEntropyLoss()
         optimizer = AdamW(model.parameters(), lr=0.001, weight_decay=1e-2)  # Example weight_decay
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', factor=0.1, patience=10, verbose=True)
+        #scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', factor=0.1, patience=10)
+        scheduler = OneCycleLR(optimizer, max_lr=0.01, steps_per_epoch=len(train_loader), epochs=100)
 
         
         # Training and Validation for the current fold
-        for epoch in range(100):  # Adjust the number of epochs if necessary
+        for epoch in range(50):  
             print(f" \n\n--------------------------\nEpoch {epoch + 1} in fold: {fold}")
-            train(train_loader, model, loss_fn, optimizer)
+            train_loss = train(train_loader, model, loss_fn, optimizer)
+            train_losses.append(train_loss)
             accuracy, val_loss = evaluate(val_loader, model, loss_fn)
-            scheduler.step(val_loss)
-            if accuracy > best_accuracy:
-                best_accuracy = accuracy
-                best_fold = fold
-                print(f"New best model found at epoch {epoch + 1} of fold {fold} with accuracy: {(best_accuracy * 100):>0.1f}%")
-                # Save the model
+            
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                best_accuracy = max(best_accuracy, accuracy)  # Update best_accuracy if necessary
+                early_stopping_counter = 0
+                # Save the model because the validation loss decreased
                 torch.save(model.state_dict(), "best_text_classifier.pth")
+                print(f"Validation loss decreased to {best_val_loss:.4f}, saving model. Best accuracy so far: {best_accuracy * 100:.1f}%")
+            else:
+                early_stopping_counter += 1
+                print(f"EarlyStopping counter: {early_stopping_counter} out of {early_stopping_patience}")
+            
+            if early_stopping_counter >= early_stopping_patience:
+                print("Early stopping triggered.")
+                break
+
+
+            scheduler.step(val_loss)
+            val_losses.append(val_loss)
         print("Training complete for fold!")
     print("Training complete!")
     print(f"Best accuracy: {(best_accuracy * 100):>0.1f}% in fold {best_fold}")
     with open('vocab.pkl', 'wb') as vocab_file:
         pickle.dump(vocab, vocab_file)
+    plt.figure(figsize=(12, 6))
+    plt.plot(train_losses, label='Training Loss')
+    plt.plot(val_losses, label='Validation Loss')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.title('Learning Curve')
+    plt.legend()
+    plt.show()
+
+    # Save the learning curve
+    plt.savefig('./results/learning_curve.png')
 
 if __name__ == "__main__":
     main()
