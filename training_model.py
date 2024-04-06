@@ -79,10 +79,11 @@ class TextClassifier(nn.Module):
         hidden = F.leaky_relu(self.fc1(embedded))
         return self.fc2(hidden)
 
-def train(dataloader, model, loss_fn, optimizer):
+def train(dataloader, model, loss_fn, optimizer, device):
     model.train()
     total_loss, total_count = 0.0, 0
     for batch, (X, y) in enumerate(dataloader):
+        X, y = X.to(device), y.to(device)
         pred = model(X)
         loss = loss_fn(pred, y)
         optimizer.zero_grad()
@@ -95,11 +96,12 @@ def train(dataloader, model, loss_fn, optimizer):
     return avg_loss  # Return the average loss over the epoch
 
 
-def evaluate(dataloader, model, loss_fn):
+def evaluate(dataloader, model, loss_fn, device):
     model.eval()
     total_acc, total_count, total_loss = 0, 0, 0.0
     with torch.no_grad():
         for X, y in dataloader:
+            X, y = X.to(device), y.to(device)
             pred = model(X)
             loss = loss_fn(pred, y)
             total_loss += loss.item() * X.size(0)
@@ -133,6 +135,8 @@ def main():
     epochs = 100
     best_val_loss_global = float('inf')
     best_model_state_global = None
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
 
     for fold, (train_ids, val_ids) in enumerate(kfold.split(full_dataset)):
         print(f"FOLD {fold}")
@@ -154,6 +158,7 @@ def main():
         
         # Define the model, loss function, and optimizer
         model = TextClassifier(len(vocab), constants.emded_dim, constants.num_class)
+        model.to(device)
         loss_fn = nn.CrossEntropyLoss()
         optimizer = AdamW(model.parameters(), lr=0.001, weight_decay=1e-2)
         scheduler = OneCycleLR(optimizer, max_lr=0.01, steps_per_epoch=len(train_loader), epochs=epochs)
@@ -164,11 +169,11 @@ def main():
             print(f"\nEpoch {epoch + 1}/{epochs} in fold {fold}")
 
             # Training phase
-            train_loss = train(train_loader, model, loss_fn, optimizer)
+            train_loss = train(train_loader, model, loss_fn, optimizer, device)
             train_losses.append(train_loss)
 
             # Validation phase
-            accuracy, val_loss = evaluate(val_loader, model, loss_fn)
+            accuracy, val_loss = evaluate(val_loader, model, loss_fn, device)
             val_losses.append(val_loss)
             scheduler.step(val_loss)
 
