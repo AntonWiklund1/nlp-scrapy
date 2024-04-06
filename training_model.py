@@ -15,10 +15,9 @@ import pickle
 import matplotlib.pyplot as plt
 from torch.optim.lr_scheduler import OneCycleLR
 from colorama import Fore, Style, init
-
-
-
-
+init()  # Initialize colorama for Windows
+from warnings import filterwarnings
+filterwarnings('ignore')
 
 def yield_tokens(data_iter):
     tokenizer = get_tokenizer("basic_english")
@@ -132,8 +131,10 @@ def main():
     kfold = KFold(n_splits=5, shuffle=True, random_state=42)
     best_accuracy = 0.0
     best_fold = 0
+    epochs = 50
 
     for fold, (train_ids, val_ids) in enumerate(kfold.split(full_dataset)):
+
         print(f"FOLD {fold}")
 
         early_stopping_patience = 10  # Number of epochs to wait after last time validation loss improved.
@@ -155,29 +156,36 @@ def main():
         loss_fn = nn.CrossEntropyLoss()
         optimizer = AdamW(model.parameters(), lr=0.001, weight_decay=1e-2)  # Example weight_decay
         #scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', factor=0.1, patience=10)
-        scheduler = OneCycleLR(optimizer, max_lr=0.01, steps_per_epoch=len(train_loader), epochs=100)
+
+
+        scheduler = OneCycleLR(optimizer, max_lr=0.01, steps_per_epoch=len(train_loader), epochs=epochs)
 
         
         # Training and Validation for the current fold
-        for epoch in range(50):  
-            print(f" \n\n--------------------------\nEpoch {epoch + 1} in fold: {fold}")
+        for epoch in range(epochs):  
+            print(f"""
+                  \n--------------------------------------------------
+                  \nEpoch {epoch + 1} in fold: {fold}
+                  """)
+            
             train_loss = train(train_loader, model, loss_fn, optimizer)
             train_losses.append(train_loss)
             accuracy, val_loss = evaluate(val_loader, model, loss_fn)
             
             if val_loss < best_val_loss:
+                #
                 best_val_loss = val_loss
                 best_accuracy = max(best_accuracy, accuracy)  # Update best_accuracy if necessary
                 early_stopping_counter = 0
                 # Save the model because the validation loss decreased
                 torch.save(model.state_dict(), "best_text_classifier.pth")
-                print(f"Validation loss decreased to {best_val_loss:.4f}, saving model. Best accuracy so far: {best_accuracy * 100:.1f}%")
+                print(f"{Fore.GREEN}Validation loss decreased to {best_val_loss:.4f}, saving model. Best accuracy so far: {best_accuracy * 100:.1f}%{Style.RESET_ALL}")
             else:
                 early_stopping_counter += 1
-                print(f"EarlyStopping counter: {early_stopping_counter} out of {early_stopping_patience}")
+                print(f"{Fore.YELLOW}EarlyStopping counter: {early_stopping_counter} out of {early_stopping_patience}{Style.RESET_ALL}")
             
             if early_stopping_counter >= early_stopping_patience:
-                print("Early stopping triggered.")
+                print(f"{Fore.RED}Early stopping triggered.{Style.RESET_ALL}")
                 break
 
 
