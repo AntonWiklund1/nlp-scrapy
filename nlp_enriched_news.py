@@ -26,10 +26,6 @@ from torchtext.data.utils import get_tokenizer
 
 import pickle
 
-import redis
-
-
-
 # Initialize the models for embeddings 
 sentence_model = SentenceTransformer('all-MiniLM-L6-v2')
 
@@ -82,13 +78,12 @@ keywords = pd.read_csv('./data/environment_keywords.txt', header=None)[0].tolist
 # Compute embeddings for the keywords
 keyword_embeddings = sentence_model.encode(keywords)
 
-# Define functions
 def extract_entities(text):
     """Extract ORG entities from the text using SpaCy."""
     doc = nlp(text)
     return [ent.text for ent in doc.ents if ent.label_ == 'ORG']
 
-def classify_compound_score(text):
+def classify_sentiment(text):
     """Classify the sentiment based on RoBERTa's analysis."""
     result = roberta_sentiment(text)
     sentiment = result[0]['label']
@@ -100,7 +95,7 @@ def classify_compound_score(text):
         return 'Neutral'
     
 def pre_process_data(df):
-    """Pre-process the data by removing missing values and duplicates."""
+    """Preprocess the data by removing duplicates, missing values, links, and images."""
     # Remove missing values
     df = df.dropna(subset=['headline', 'body'])
     # Remove duplicates
@@ -173,7 +168,7 @@ def process_data(df):
     
     print("Analyzing sentiment of articles...")
     # Use RoBERTa for sentiment analysis
-    df['sentiment'] = df['headline'].progress_apply(classify_compound_score)
+    df['sentiment'] = df['headline'].progress_apply(classify_sentiment)
     
     print("Computing similarity to keywords...")
     similarity_and_keyword = df['body'].progress_apply(lambda x: compute_similarity_and_keyword(x, keyword_embeddings, keywords))
