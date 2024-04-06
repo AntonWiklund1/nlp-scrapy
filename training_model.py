@@ -112,6 +112,26 @@ def evaluate(dataloader, model, loss_fn, device):
     print(f'Validation Accuracy: {(accuracy * 100):>0.1f}%, Avg loss: {avg_loss:>8f}')
     return accuracy, avg_loss
 
+def test(model,device):
+    test_df = pd.read_csv('./data/bbc_news_tests.csv')
+    with open('vocab.pkl', 'rb') as vocab_file:
+        vocab = pickle.load(vocab_file)
+    with open('category_to_int.pkl', 'rb') as handle:
+        category_to_int = pickle.load(handle)
+    test_df['Category'] = test_df['Category'].map(category_to_int)
+    test_dataset = NewsDataset(test_df['Text'].reset_index(drop=True), test_df['Category'].reset_index(drop=True), vocab)
+    test_loader = DataLoader(test_dataset, batch_size=16, collate_fn=collate_batch)
+    model.eval()
+    total_acc, total_count = 0, 0
+    with torch.no_grad():
+        for X, y in test_loader:
+            X, y = X.to(device), y.to(device)
+            pred = model(X)
+            total_acc += (pred.argmax(1) == y).sum().item()
+            total_count += y.size(0)
+    accuracy = total_acc / total_count
+    print(f'Test Accuracy: {(accuracy * 100):>0.1f}%')
+
 def main():
     # Load data and prepare vocab
     train_df, vocab, tokenizer = prepare_data_and_vocab()
@@ -200,8 +220,14 @@ def main():
     print("Training complete for all folds!")
     print(f"Best accuracy: {(best_accuracy * 100):.2f}% in fold {best_fold}")
     if best_model_state_global is not None:
-        torch.save(best_model_state_global, "topic_classifier.pkl.pth")
+        torch.save(best_model_state_global, "topic_classifier.pth")
         print(f"Best model saved with validation loss {best_val_loss_global:.4f} from fold {best_fold}")
+
+    # Test the best model
+    model = TextClassifier(len(vocab), constants.emded_dim, constants.num_class)
+    model.load_state_dict(best_model_state_global)
+    model.to(device)
+    test(model, device)
 
     # Optionally, plot the learning curve
     plt.figure(figsize=(12, 6))
