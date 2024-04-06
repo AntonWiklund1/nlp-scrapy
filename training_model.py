@@ -129,7 +129,7 @@ def main():
                                train_df['Category'].reset_index(drop=True), vocab)
 
     # K-Fold Cross-Validation
-    kfold = KFold(n_splits=10, shuffle=True, random_state=42)
+    kfold = KFold(n_splits=5, shuffle=True, random_state=42)
     best_accuracy = 0.0
     best_fold = -1
     epochs = 100
@@ -185,7 +185,7 @@ def main():
                     best_model_state_global = model.state_dict()
                     best_fold = fold
                     best_accuracy = accuracy
-                    torch.save(best_model_state_global, "best_text_classifier_global.pth")
+                    torch.save(best_model_state_global, "topic_classifier.pkl.pth")
                     print(f"{Fore.GREEN}New best model found for fold {fold} with validation loss {best_val_loss_global:.4f}{Style.RESET_ALL}")
                 early_stopping_counter = 0
             else:
@@ -200,7 +200,7 @@ def main():
     print("Training complete for all folds!")
     print(f"Best accuracy: {(best_accuracy * 100):.2f}% in fold {best_fold}")
     if best_model_state_global is not None:
-        torch.save(best_model_state_global, "best_text_classifier_global.pth")
+        torch.save(best_model_state_global, "topic_classifier.pkl.pth")
         print(f"Best model saved with validation loss {best_val_loss_global:.4f} from fold {best_fold}")
 
     # Optionally, plot the learning curve
