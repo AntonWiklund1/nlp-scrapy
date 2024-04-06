@@ -111,11 +111,8 @@ def evaluate(dataloader, model, loss_fn):
     return accuracy, avg_loss
 
 def main():
-
     # Load data and prepare vocab
     train_df, vocab, tokenizer = prepare_data_and_vocab()
-    
-    
 
     # Convert categories to integer labels
     unique_categories = train_df['Category'].unique()
@@ -124,27 +121,31 @@ def main():
         pickle.dump(category_to_int, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
     train_df['Category'] = train_df['Category'].map(category_to_int)
+
     # Prepare the full dataset
     full_dataset = NewsDataset(train_df['Text'].reset_index(drop=True), 
                                train_df['Category'].reset_index(drop=True), vocab)
+
     # K-Fold Cross-Validation
-    kfold = KFold(n_splits=5, shuffle=True, random_state=42)
+    kfold = KFold(n_splits=10, shuffle=True, random_state=42)
     best_accuracy = 0.0
-    best_fold = 0
-    epochs = 50
+    best_fold = -1
+    epochs = 100
+    best_val_loss_global = float('inf')
+    best_model_state_global = None
 
     for fold, (train_ids, val_ids) in enumerate(kfold.split(full_dataset)):
-
         print(f"FOLD {fold}")
 
-        early_stopping_patience = 10  # Number of epochs to wait after last time validation loss improved.
-        early_stopping_counter = 0  # Counter for the epochs waited since last improvement.
-        best_val_loss = float('inf')  # Initialize the best validation loss as infinity.
+        # Initialize the early stopping criteria and fold-specific best validation loss
+        early_stopping_patience = 10
+        early_stopping_counter = 0
+        best_val_loss_fold = float('inf')
 
-
+        # Initialize training and validation loss history for plotting
         train_losses, val_losses = [], []
 
-        # Split dataset into training and validation
+        # Set up the DataLoaders for the training and validation sets
         train_subsampler = torch.utils.data.SubsetRandomSampler(train_ids)
         val_subsampler = torch.utils.data.SubsetRandomSampler(val_ids)
         
@@ -154,48 +155,50 @@ def main():
         # Define the model, loss function, and optimizer
         model = TextClassifier(len(vocab), constants.emded_dim, constants.num_class)
         loss_fn = nn.CrossEntropyLoss()
-        optimizer = AdamW(model.parameters(), lr=0.001, weight_decay=1e-2)  # Example weight_decay
+        optimizer = AdamW(model.parameters(), lr=0.001, weight_decay=1e-2)
+        scheduler = OneCycleLR(optimizer, max_lr=0.01, steps_per_epoch=len(train_loader), epochs=epochs)
         #scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', factor=0.1, patience=10)
 
+        # Training and validation for the current fold
+        for epoch in range(epochs):
+            print(f"\nEpoch {epoch + 1}/{epochs} in fold {fold}")
 
-        scheduler = OneCycleLR(optimizer, max_lr=0.01, steps_per_epoch=len(train_loader), epochs=epochs)
-
-        
-        # Training and Validation for the current fold
-        for epoch in range(epochs):  
-            print(f"""
-                  \n--------------------------------------------------
-                  \nEpoch {epoch + 1} in fold: {fold}
-                  """)
-            
+            # Training phase
             train_loss = train(train_loader, model, loss_fn, optimizer)
             train_losses.append(train_loss)
+
+            # Validation phase
             accuracy, val_loss = evaluate(val_loader, model, loss_fn)
-            
-            if val_loss < best_val_loss:
-                #
-                best_val_loss = val_loss
-                best_accuracy = max(best_accuracy, accuracy)  # Update best_accuracy if necessary
+            val_losses.append(val_loss)
+            scheduler.step(val_loss)
+
+            # Early stopping and checkpointing logic
+            if val_loss < best_val_loss_fold:
+                best_val_loss_fold = val_loss
+                if val_loss < best_val_loss_global:
+                    best_val_loss_global = val_loss
+                    best_model_state_global = model.state_dict()
+                    best_fold = fold
+                    best_accuracy = accuracy
+                    torch.save(best_model_state_global, "best_text_classifier_global.pth")
+                    print(f"{Fore.GREEN}New best model found for fold {fold} with validation loss {best_val_loss_global:.4f}{Style.RESET_ALL}")
                 early_stopping_counter = 0
-                # Save the model because the validation loss decreased
-                torch.save(model.state_dict(), "best_text_classifier.pth")
-                print(f"{Fore.GREEN}Validation loss decreased to {best_val_loss:.4f}, saving model. Best accuracy so far: {best_accuracy * 100:.1f}%{Style.RESET_ALL}")
             else:
                 early_stopping_counter += 1
                 print(f"{Fore.YELLOW}EarlyStopping counter: {early_stopping_counter} out of {early_stopping_patience}{Style.RESET_ALL}")
-            
-            if early_stopping_counter >= early_stopping_patience:
-                print(f"{Fore.RED}Early stopping triggered.{Style.RESET_ALL}")
-                break
+                if early_stopping_counter >= early_stopping_patience:
+                    print(f"{Fore.RED}Early stopping triggered.{Style.RESET_ALL}")
+                    break
 
+        print(f"Training complete for fold {fold} with best validation loss {best_val_loss_fold:.4f}")
 
-            scheduler.step(val_loss)
-            val_losses.append(val_loss)
-        print("Training complete for fold!")
-    print("Training complete!")
-    print(f"Best accuracy: {(best_accuracy * 100):>0.1f}% in fold {best_fold}")
-    with open('vocab.pkl', 'wb') as vocab_file:
-        pickle.dump(vocab, vocab_file)
+    print("Training complete for all folds!")
+    print(f"Best accuracy: {(best_accuracy * 100):.2f}% in fold {best_fold}")
+    if best_model_state_global is not None:
+        torch.save(best_model_state_global, "best_text_classifier_global.pth")
+        print(f"Best model saved with validation loss {best_val_loss_global:.4f} from fold {best_fold}")
+
+    # Optionally, plot the learning curve
     plt.figure(figsize=(12, 6))
     plt.plot(train_losses, label='Training Loss')
     plt.plot(val_losses, label='Validation Loss')
@@ -204,9 +207,11 @@ def main():
     plt.title('Learning Curve')
     plt.legend()
     plt.show()
-
-    # Save the learning curve
     plt.savefig('./results/learning_curve.png')
+
+    # Save vocabulary and category mapping
+    with open('vocab.pkl', 'wb') as vocab_file:
+        pickle.dump(vocab, vocab_file)
 
 if __name__ == "__main__":
     main()
