@@ -66,33 +66,31 @@ def collate_batch(batch):
     label_list = torch.tensor(label_list, dtype=torch.int64)
     return text_list, label_list
 
-class Attention(nn.Module):
-    """A simple attention layer. This can be used to compute attention weights and apply them to the input embeddings."""
-    #later we can test multihead attention and other attention mechanisms
-    def __init__(self, embed_dim, hidden_dim):
-        super(Attention, self).__init__()
-        self.attention = nn.Linear(embed_dim, hidden_dim)
-        self.context_vector = nn.Linear(hidden_dim, 1, bias=False)
+class MultiHeadAttentionLayer(nn.Module):
+    def __init__(self, embed_dim, num_heads):
+        super(MultiHeadAttentionLayer, self).__init__()
+        self.multihead_attn = nn.MultiheadAttention(embed_dim=embed_dim, num_heads=num_heads)
         
     def forward(self, embeddings):
-        # embeddings shape: (batch_size, seq_len, embed_dim)
-        attention_weights = self.context_vector(torch.tanh(self.attention(embeddings)))
-        attention_weights = torch.softmax(attention_weights.squeeze(2), dim=1)
-        
-        # Create an attention-applied context vector
-        context_vector = torch.sum(embeddings * attention_weights.unsqueeze(2), dim=1)
-        return context_vector, attention_weights
+        # MultiheadAttention expects input in shape (seq_len, batch_size, embed_dim)
+        embeddings = embeddings.permute(1, 0, 2)  
+        attn_output, attn_output_weights = self.multihead_attn(embeddings, embeddings, embeddings)
+        # Convert back to (batch_size, seq_len, embed_dim) for compatibility with further layers
+        attn_output = attn_output.permute(1, 0, 2)
+        # Here, we simply average the outputs over the sequence length dimension to get a single vector per sequence.
+        return attn_output.mean(dim=1), attn_output_weights
+
 
 
 # Define the model
 class TextClassifier(nn.Module):
     """"A simple text classifier model with an attention mechanism. This model will be used to classify news articles into different categories."""
-    def __init__(self, vocab_size, embed_dim, num_class):
+    def __init__(self, vocab_size, embed_dim, num_class, num_heads):
         super(TextClassifier, self).__init__()
         self.embedding = nn.Embedding(vocab_size, embed_dim) # embedding layer
         self.dropout = nn.Dropout(0.5) # dropout layer
 
-        self.attention = Attention(embed_dim, hidden_dim=128) # attention layer
+        self.attention = MultiHeadAttentionLayer(embed_dim, num_heads) # attention layer
 
         self.fc1 = nn.Linear(embed_dim, 128) # hidden layer
         self.fc2 = nn.Linear(128, num_class) # output layer
@@ -208,7 +206,7 @@ def main():
         val_loader = DataLoader(full_dataset, batch_size=16, sampler=val_subsampler, collate_fn=collate_batch)
         
         # Define the model, loss function, and optimizer
-        model = TextClassifier(len(vocab), constants.emded_dim, constants.num_class)
+        model = TextClassifier(len(vocab), constants.emded_dim, constants.num_class, num_heads=4)
         model.to(device)
         loss_fn = nn.CrossEntropyLoss()
         optimizer = AdamW(model.parameters(), lr=0.001, weight_decay=1e-2)
