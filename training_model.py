@@ -74,7 +74,7 @@ class MultiHeadAttentionLayer(nn.Module):
         
     def forward(self, embeddings):
         # MultiheadAttention expects input in shape (seq_len, batch_size, embed_dim)
-        embeddings = embeddings.permute(1, 0, 2)  
+        embeddings = embeddings.permute(1, 0, 2)
         attn_output, attn_output_weights = self.multihead_attn(embeddings, embeddings, embeddings)
         # Convert back to (batch_size, seq_len, embed_dim) for compatibility with further layers
         attn_output = attn_output.permute(1, 0, 2)
