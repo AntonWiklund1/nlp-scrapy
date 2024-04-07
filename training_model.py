@@ -18,6 +18,7 @@ from colorama import Fore, Style, init
 init()  # Initialize colorama for Windows
 from warnings import filterwarnings
 filterwarnings('ignore')
+from datetime import datetime
 
 def yield_tokens(data_iter):
     tokenizer = get_tokenizer("basic_english")
@@ -160,6 +161,7 @@ def test(model,device):
             total_count += y.size(0)
     accuracy = total_acc / total_count
     print(f'Test Accuracy: {(accuracy * 100):>0.1f}%')
+    return accuracy
 
 def main():
     # Load data and prepare vocab
@@ -248,6 +250,12 @@ def main():
 
     print("Training complete for all folds!")
     print(f"Best accuracy: {(best_accuracy * 100):.2f}% in fold {best_fold}")
+
+
+   
+
+
+    # Save the best model
     if best_model_state_global is not None:
         torch.save(best_model_state_global, "topic_classifier.pth")
         print(f"Best model saved with validation loss {best_val_loss_global:.4f} from fold {best_fold}")
@@ -256,11 +264,16 @@ def main():
     model = TextClassifier(len(vocab), constants.emded_dim, constants.num_class)
     model.load_state_dict(best_model_state_global)
     model.to(device)
-    test(model, device)
+    test_accuracy = test(model, device)
 
-
-    #print some statistics
-
+     #print the best accuracy in to a log file'
+    try:
+        with open('./results/best_accuracy_log.txt', 'a') as f:
+            current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            f.write(f"{current_time} - Best accuracy: {(best_accuracy * 100):.2f}% in fold {best_fold}. Test accuracy: {(test_accuracy * 100):.2f}%\n")
+            print(f"Best accuracy logged to file")
+    except Exception as e:
+        print(f"Error writing to log file: {e}")
 
     # Optionally, plot the learning curve
     plt.figure(figsize=(12, 6))
