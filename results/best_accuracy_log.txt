@@ -1,1 +1,2 @@
 2024-04-07 08:49:15 - Best accuracy: 98.92% in fold 4
+2024-04-07 09:04:40 - Best accuracy: 98.38% in fold 4. Test accuracy: 99.46%
