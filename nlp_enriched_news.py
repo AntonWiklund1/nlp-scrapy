@@ -56,8 +56,8 @@ def text_pipeline(x, vocab):
     return [vocab[token] for token in tokenizer(x)]
 
 # Recreate the model structure
-model = TextClassifier(vocab_size, embed_dim, num_class)
-model.load_state_dict(torch.load("best_text_classifier.pth"))
+model = TextClassifier(len(vocab), constants.emded_dim, constants.num_class, num_heads=4)
+model.load_state_dict(torch.load("topic_classifier.pth"))
 model.eval()  # Set the model to evaluation mode
 
 # Load the RoBERTa model for sentiment analysis
