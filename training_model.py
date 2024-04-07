@@ -19,6 +19,7 @@ init()  # Initialize colorama for Windows
 from warnings import filterwarnings
 filterwarnings('ignore')
 from datetime import datetime
+import time
 
 def yield_tokens(data_iter):
     tokenizer = get_tokenizer("basic_english")
@@ -79,8 +80,23 @@ class MultiHeadAttentionLayer(nn.Module):
         attn_output = attn_output.permute(1, 0, 2)
         # Here, we simply average the outputs over the sequence length dimension to get a single vector per sequence.
         return attn_output.mean(dim=1), attn_output_weights
+    
+class Attention(nn.Module):
+    """A simple attention layer. This can be used to compute attention weights and apply them to the input embeddings."""
+    #later we can test multihead attention and other attention mechanisms
+    def __init__(self, embed_dim, hidden_dim):
+        super(Attention, self).__init__()
+        self.attention = nn.Linear(embed_dim, hidden_dim)
+        self.context_vector = nn.Linear(hidden_dim, 1, bias=False)
 
+    def forward(self, embeddings):
+        # embeddings shape: (batch_size, seq_len, embed_dim)
+        attention_weights = self.context_vector(torch.tanh(self.attention(embeddings)))
+        attention_weights = torch.softmax(attention_weights.squeeze(2), dim=1)
 
+        # Create an attention-applied context vector
+        context_vector = torch.sum(embeddings * attention_weights.unsqueeze(2), dim=1)
+        return context_vector, attention_weights
 
 # Define the model
 class TextClassifier(nn.Module):
@@ -90,7 +106,8 @@ class TextClassifier(nn.Module):
         self.embedding = nn.Embedding(vocab_size, embed_dim) # embedding layer
         self.dropout = nn.Dropout(0.5) # dropout layer
 
-        self.attention = MultiHeadAttentionLayer(embed_dim, num_heads) # attention layer
+        #self.attention = MultiHeadAttentionLayer(embed_dim, num_heads) # attention layer
+        self.attention = Attention(embed_dim, 128) # attention layer
 
         self.fc1 = nn.Linear(embed_dim, 128) # hidden layer
         self.fc2 = nn.Linear(128, num_class) # output layer
@@ -120,7 +137,6 @@ def train(dataloader, model, loss_fn, optimizer, device):
     avg_loss = total_loss / total_count
     print(f"Training Loss: {loss:>8f}")
     return avg_loss  # Return the average loss over the epoch
-
 
 def evaluate(dataloader, model, loss_fn, device):
     """Evaluate the model on the validation set."""
@@ -162,6 +178,7 @@ def test(model,device):
     return accuracy
 
 def main():
+    start_time = time.time()
     # Load data and prepare vocab
     train_df, vocab, tokenizer = prepare_data_and_vocab()
 
@@ -258,19 +275,10 @@ def main():
         print(f"Best model saved with validation loss {best_val_loss_global:.4f} from fold {best_fold}")
 
     # Test the best model
-    model = TextClassifier(len(vocab), constants.emded_dim, constants.num_class)
+    model = TextClassifier(len(vocab), constants.emded_dim, constants.num_class, num_heads=4)
     model.load_state_dict(best_model_state_global)
     model.to(device)
     test_accuracy = test(model, device)
-
-     #print the best accuracy in to a log file'
-    try:
-        with open('./results/best_accuracy_log.txt', 'a') as f:
-            current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            f.write(f"{current_time} - Best accuracy: {(best_accuracy * 100):.2f}% in fold {best_fold}. Test accuracy: {(test_accuracy * 100):.2f}%\n")
-            print(f"Best accuracy logged to file")
-    except Exception as e:
-        print(f"Error writing to log file: {e}")
 
     # Optionally, plot the learning curve
     plt.figure(figsize=(12, 6))
@@ -286,6 +294,14 @@ def main():
     # Save vocabulary and category mapping
     with open('vocab.pkl', 'wb') as vocab_file:
         pickle.dump(vocab, vocab_file)
+
+    try:
+        with open('./results/best_accuracy_log.txt', 'a') as f:
+            current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            f.write(f"{current_time} - Best accuracy: {(best_accuracy * 100):.2f}% in fold {best_fold}. Test accuracy: {(test_accuracy * 100):.2f}%. Time taken: {time.time() - start_time:.2f} seconds, using device: {device}\n")
+            print(f"Best accuracy logged to file")
+    except Exception as e:
+        print(f"Error writing to log file: {e}")
 
     print(f"{Fore.GREEN}Complete!{Style.RESET_ALL}")
 
