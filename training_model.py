@@ -89,13 +89,13 @@ class TextClassifier(nn.Module):
     """"A simple text classifier model with an attention mechanism. This model will be used to classify news articles into different categories."""
     def __init__(self, vocab_size, embed_dim, num_class):
         super(TextClassifier, self).__init__()
-        self.embedding = nn.Embedding(vocab_size, embed_dim)
-        self.dropout = nn.Dropout(0.5)
+        self.embedding = nn.Embedding(vocab_size, embed_dim) # embedding layer
+        self.dropout = nn.Dropout(0.5) # dropout layer
 
-        self.attention = Attention(embed_dim, hidden_dim=128)
+        self.attention = Attention(embed_dim, hidden_dim=128) # attention layer
 
-        self.fc1 = nn.Linear(embed_dim, 128)
-        self.fc2 = nn.Linear(128, num_class)
+        self.fc1 = nn.Linear(embed_dim, 128) # hidden layer
+        self.fc2 = nn.Linear(128, num_class) # output layer
     
     def forward(self, text):
         embedded = self.embedding(text)
