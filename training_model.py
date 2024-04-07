@@ -65,21 +65,48 @@ def collate_batch(batch):
     label_list = torch.tensor(label_list, dtype=torch.int64)
     return text_list, label_list
 
+class Attention(nn.Module):
+    """A simple attention layer. This can be used to compute attention weights and apply them to the input embeddings."""
+    #later we can test multihead attention and other attention mechanisms
+    def __init__(self, embed_dim, hidden_dim):
+        super(Attention, self).__init__()
+        self.attention = nn.Linear(embed_dim, hidden_dim)
+        self.context_vector = nn.Linear(hidden_dim, 1, bias=False)
+        
+    def forward(self, embeddings):
+        # embeddings shape: (batch_size, seq_len, embed_dim)
+        attention_weights = self.context_vector(torch.tanh(self.attention(embeddings)))
+        attention_weights = torch.softmax(attention_weights.squeeze(2), dim=1)
+        
+        # Create an attention-applied context vector
+        context_vector = torch.sum(embeddings * attention_weights.unsqueeze(2), dim=1)
+        return context_vector, attention_weights
+
+
 # Define the model
 class TextClassifier(nn.Module):
+    """"A simple text classifier model with an attention mechanism. This model will be used to classify news articles into different categories."""
     def __init__(self, vocab_size, embed_dim, num_class):
         super(TextClassifier, self).__init__()
         self.embedding = nn.Embedding(vocab_size, embed_dim)
         self.dropout = nn.Dropout(0.5)
-        self.fc1 = nn.Linear(embed_dim, 200)
-        self.fc2 = nn.Linear(200, num_class)
+
+        self.attention = Attention(embed_dim, hidden_dim=128)
+
+        self.fc1 = nn.Linear(embed_dim, 128)
+        self.fc2 = nn.Linear(128, num_class)
     
     def forward(self, text):
-        embedded = self.embedding(text).mean(dim=1)
-        hidden = F.leaky_relu(self.fc1(embedded))
-        return self.fc2(hidden)
+        embedded = self.embedding(text)
+        # Apply attention
+        context_vector, attention_weights = self.attention(embedded)
+
+        hidden = F.leaky_relu(self.fc1(context_vector))
+        output = self.fc2(hidden)
+        return output
 
 def train(dataloader, model, loss_fn, optimizer, device):
+    """Train the model for one epoch."""
     model.train()
     total_loss, total_count = 0.0, 0
     for batch, (X, y) in enumerate(dataloader):
@@ -97,6 +124,7 @@ def train(dataloader, model, loss_fn, optimizer, device):
 
 
 def evaluate(dataloader, model, loss_fn, device):
+    """Evaluate the model on the validation set."""
     model.eval()
     total_acc, total_count, total_loss = 0, 0, 0.0
     with torch.no_grad():
@@ -113,6 +141,7 @@ def evaluate(dataloader, model, loss_fn, device):
     return accuracy, avg_loss
 
 def test(model,device):
+    """Test the model on the test set and print the accuracy."""
     test_df = pd.read_csv('./data/bbc_news_tests.csv')
     with open('vocab.pkl', 'rb') as vocab_file:
         vocab = pickle.load(vocab_file)
@@ -205,7 +234,7 @@ def main():
                     best_model_state_global = model.state_dict()
                     best_fold = fold
                     best_accuracy = accuracy
-                    torch.save(best_model_state_global, "topic_classifier.pkl.pth")
+                    torch.save(best_model_state_global, "topic_classifier.pth")
                     print(f"{Fore.GREEN}New best model found for fold {fold} with validation loss {best_val_loss_global:.4f}{Style.RESET_ALL}")
                 early_stopping_counter = 0
             else:
@@ -229,6 +258,10 @@ def main():
     model.to(device)
     test(model, device)
 
+
+    #print some statistics
+
+
     # Optionally, plot the learning curve
     plt.figure(figsize=(12, 6))
     plt.plot(train_losses, label='Training Loss')
@@ -237,8 +270,8 @@ def main():
     plt.ylabel('Loss')
     plt.title('Learning Curve')
     plt.legend()
-    plt.show()
     plt.savefig('./results/learning_curve.png')
+    plt.show()
 
     # Save vocabulary and category mapping
     with open('vocab.pkl', 'wb') as vocab_file:
