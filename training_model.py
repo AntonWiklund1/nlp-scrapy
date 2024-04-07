@@ -228,7 +228,8 @@ def main():
             val_losses.append(val_loss)
             scheduler.step(val_loss)
 
-            # Early stopping and checkpointing logic
+            ## Early stopping and checkpointing logic
+            # If the val loss is decreasing then we save the model
             if val_loss < best_val_loss_fold:
                 best_val_loss_fold = val_loss
                 if val_loss < best_val_loss_global:
@@ -239,9 +240,11 @@ def main():
                     torch.save(best_model_state_global, "topic_classifier.pth")
                     print(f"{Fore.GREEN}New best model found for fold {fold} with validation loss {best_val_loss_global:.4f}{Style.RESET_ALL}")
                 early_stopping_counter = 0
+            # If the val loss is not decreasing then we increase the early stopping counter
             else:
                 early_stopping_counter += 1
                 print(f"{Fore.YELLOW}EarlyStopping counter: {early_stopping_counter} out of {early_stopping_patience}{Style.RESET_ALL}")
+                # If the early stopping counter is greater than the patience then we break the loop
                 if early_stopping_counter >= early_stopping_patience:
                     print(f"{Fore.RED}Early stopping triggered.{Style.RESET_ALL}")
                     break
@@ -250,10 +253,6 @@ def main():
 
     print("Training complete for all folds!")
     print(f"Best accuracy: {(best_accuracy * 100):.2f}% in fold {best_fold}")
-
-
-   
-
 
     # Save the best model
     if best_model_state_global is not None:
@@ -289,6 +288,8 @@ def main():
     # Save vocabulary and category mapping
     with open('vocab.pkl', 'wb') as vocab_file:
         pickle.dump(vocab, vocab_file)
+
+    print(f"{Fore.GREEN}Complete!{Style.RESET_ALL}")
 
 if __name__ == "__main__":
     main()
