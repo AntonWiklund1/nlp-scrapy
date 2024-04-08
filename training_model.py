@@ -106,8 +106,8 @@ class TextClassifier(nn.Module):
         self.embedding = nn.Embedding(vocab_size, embed_dim) # embedding layer
         self.dropout = nn.Dropout(0.5) # dropout layer
 
-        #self.attention = MultiHeadAttentionLayer(embed_dim, num_heads) # attention layer
-        self.attention = Attention(embed_dim, 128) # attention layer
+        self.attention = MultiHeadAttentionLayer(embed_dim, num_heads) # attention layer
+        #self.attention = Attention(embed_dim, 128) # attention layer
 
         self.fc1 = nn.Linear(embed_dim, 128) # hidden layer
         self.fc2 = nn.Linear(128, num_class) # output layer
@@ -164,7 +164,7 @@ def test(model,device):
         category_to_int = pickle.load(handle)
     test_df['Category'] = test_df['Category'].map(category_to_int)
     test_dataset = NewsDataset(test_df['Text'].reset_index(drop=True), test_df['Category'].reset_index(drop=True), vocab)
-    test_loader = DataLoader(test_dataset, batch_size=16, collate_fn=collate_batch)
+    test_loader = DataLoader(test_dataset, batch_size=8, collate_fn=collate_batch)
     model.eval()
     total_acc, total_count = 0, 0
     with torch.no_grad():
@@ -179,6 +179,9 @@ def test(model,device):
 
 def main():
     start_time = time.time()
+
+    torch.cuda.empty_cache()
+  
     # Load data and prepare vocab
     train_df, vocab, tokenizer = prepare_data_and_vocab()
 
@@ -208,7 +211,7 @@ def main():
         print(f"FOLD {fold}")
 
         # Initialize the early stopping criteria and fold-specific best validation loss
-        early_stopping_patience = 10
+        early_stopping_patience = 5
         early_stopping_counter = 0
         best_val_loss_fold = float('inf')
 
@@ -219,8 +222,8 @@ def main():
         train_subsampler = torch.utils.data.SubsetRandomSampler(train_ids)
         val_subsampler = torch.utils.data.SubsetRandomSampler(val_ids)
         
-        train_loader = DataLoader(full_dataset, batch_size=16, sampler=train_subsampler, collate_fn=collate_batch)
-        val_loader = DataLoader(full_dataset, batch_size=16, sampler=val_subsampler, collate_fn=collate_batch)
+        train_loader = DataLoader(full_dataset, batch_size=8, sampler=train_subsampler, collate_fn=collate_batch)
+        val_loader = DataLoader(full_dataset, batch_size=8, sampler=val_subsampler, collate_fn=collate_batch)
         
         # Define the model, loss function, and optimizer
         model = TextClassifier(len(vocab), constants.emded_dim, constants.num_class, num_heads=4)

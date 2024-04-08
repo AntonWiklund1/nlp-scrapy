@@ -1,2 +1,2 @@
-emded_dim = 128
+emded_dim = 64
 num_class = 5

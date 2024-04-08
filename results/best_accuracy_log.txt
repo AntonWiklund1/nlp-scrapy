@@ -3,3 +3,4 @@
 2024-04-07 10:39:33 - Best accuracy: 98.65% in fold 3. Test accuracy: 99.18%. Time taken: 577.68 seconds, using device: cuda # 128 neurons
 2024-04-07 10:49:16 - Best accuracy: 98.52% in fold 1. Test accuracy: 98.78%. Time taken: 417.05 seconds, using device: cuda # 258 neurons
 2024-04-07 10:57:49 - Best accuracy: 99.06% in fold 2. Test accuracy: 99.46%. Time taken: 454.90 seconds, using device: cuda # 128 neurons
+2024-04-07 18:33:39 - Best accuracy: 98.25% in fold 3. Test accuracy: 99.59%. Time taken: 1923.14 seconds, using device: cuda # multihead attention, 8 batch size
