@@ -10,7 +10,6 @@ from transformers import pipeline, RobertaTokenizer, RobertaForSequenceClassific
 import warnings
 from torchtext.data.utils import get_tokenizer
 
-
 from training_model import TextClassifier
 warnings.filterwarnings('ignore')
 from colorama import Fore, Style, init
@@ -56,8 +55,8 @@ def text_pipeline(x, vocab):
     return [vocab[token] for token in tokenizer(x)]
 
 # Recreate the model structure
-model = TextClassifier(len(vocab), constants.emded_dim, constants.num_class, num_heads=4)
-model.load_state_dict(torch.load("topic_classifier.pth"))
+model = TextClassifier(len(vocab), constants.emded_dim, constants.num_class, num_heads=8)
+model.load_state_dict(torch.load("./models/topic_classifier.pth"))
 model.eval()  # Set the model to evaluation mode
 
 # Load the RoBERTa model for sentiment analysis
@@ -135,24 +134,26 @@ def find_scandals(keyword_similarity, entities, sentiment):
     else:
         return 'Normal'
 
-# Predict categories with confidence threshold
 def predict_categories(df, threshold=0.6):
     int_to_category = {v: k for k, v in category_to_int.items()}
     print("Predicting article categories with confidence scores...")
     results = []
-    for text in df['body']:
+    
+    for text in df['headline']:
         text_tensor = torch.tensor(text_pipeline(text, vocab), dtype=torch.int64).unsqueeze(0)  # Add batch dimension
         with torch.no_grad():
             probabilities = torch.softmax(model(text_tensor), dim=1)
             max_prob, predicted_category = torch.max(probabilities, dim=1)
-            if max_prob.item() >= threshold:
-                results.append((int_to_category[predicted_category.item()], max_prob.item()))  # Convert to category name here
-            else:
-                results.append((None, max_prob.item()))  # Use None or a placeholder if confidence is below threshold
-    # Assuming df has an index that's aligned with the iteration order
-    df['predicted_category'] = [res[0] for res in results]  # This will now hold the category names
+            category_name = int_to_category[predicted_category.item()] if max_prob.item() >= threshold else None
+            results.append((category_name, max_prob.item()))
+    
+    df['predicted_category'] = [res[0] for res in results]
     df['confidence'] = [res[1] for res in results]
-    return df[df['predicted_category'].notnull()]  # Return only confident predictions
+    
+    # Sort by confidence in descending order and select the top 300
+    top_df = df.sort_values(by='confidence', ascending=False).head(300)
+    
+    return top_df
 
 # Main processing
 def process_data(df):
@@ -178,9 +179,10 @@ def process_data(df):
     df['scandal'] = df.progress_apply(lambda x: find_scandals(x['keyword_similarity'], x['entities'], x['sentiment']), axis=1)
 
     # Reorder columns for better readability
-    df = df[['predicted_category', 'sentiment', 'entities', 'headline', 'link', 'date', 'body', 'keyword_similarity','scandal','most_similar_keyword']]
-    
-    return df
+    try:
+        return df[['predicted_category', 'sentiment', 'entities', 'headline', 'link', 'date', 'body', 'keyword_similarity','scandal','most_similar_keyword']]
+    except KeyError:
+        return df
 
 # Apply the processing to the data
 processed_data = process_data(data)
