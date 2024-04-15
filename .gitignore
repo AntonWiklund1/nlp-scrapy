@@ -1,2 +1,3 @@
 venv/
 nbc_news_cache.sqlite
+__pycache__/
