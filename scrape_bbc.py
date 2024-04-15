@@ -23,17 +23,17 @@ def scrape_news_business():
     driver.switch_to.default_content()
 
     all_cards = []
-    for _ in tqdm(range(9), desc="Loading news for business"):
-        click_load_more(driver)
-        # Wait for AJAX content to load and stabilize
-        WebDriverWait(driver, 10).until(
-            lambda d: "Loading" not in d.page_source
-        )
-        soup = BeautifulSoup(driver.page_source, 'html.parser')
-        liverpool_cards = soup.find_all(attrs={"data-testid": "liverpool-card"})
-        print(f"Cards found this iteration: {len(liverpool_cards)}")
-        all_cards.extend(liverpool_cards)
-        time.sleep(1)  # Just in case additional stabilization is needed
+    #for _ in tqdm(range(9), desc="Loading news for business"):
+    #click_load_more(driver)
+    # Wait for AJAX content to load and stabilize
+    # WebDriverWait(driver, 10).until(
+    #     lambda d: "Loading" not in d.page_source
+    # )
+    soup = BeautifulSoup(driver.page_source, 'html.parser')
+    liverpool_cards = soup.find_all(attrs={"data-testid": "liverpool-card"})
+    print(f"Cards found this iteration: {len(liverpool_cards)}")
+    all_cards.extend(liverpool_cards)
+    # time.sleep(1)  # Just in case additional stabilization is needed
 
     driver.quit()
     return all_cards, len(all_cards)
