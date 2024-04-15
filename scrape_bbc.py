@@ -11,12 +11,12 @@ import csv
 # Set up caching
 requests_cache.install_cache('bbc_cache', backend='sqlite', expire_after=300)
 
-def scrape_news_business():
+def scrape_news(category):
     options = webdriver.ChromeOptions()
     # Uncomment the next line to run in headless mode once debugging is complete
     # options.add_argument('--headless')
     driver = webdriver.Chrome(options=options)
-    driver.get('https://www.bbc.com/business')
+    driver.get(f'https://www.bbc.com/{category}')
 
 
     time.sleep(3)  # Wait for the page to load
@@ -31,7 +31,7 @@ def scrape_news_business():
     all_articles = []
     base_url = "https://www.bbc.com"  # Base URL for constructing full URLs from relative paths
     urls = []
-    for _ in tqdm(range(7), desc="Loading news"):
+    for _ in tqdm(range(9), desc=f"Loading news for {category}"):
         click_load_more(driver)
         time.sleep(3)
         WebDriverWait(driver, 20).until(
@@ -52,10 +52,10 @@ def scrape_news_business():
                 #all_articles.append(detailed_content)
 
     driver.quit()
-    return urls, len(urls)
+    print(f"Found {len(urls)} articles for {category}")
+    return urls
 
 def scrape_detailed_page(driver, url):
-    print("Navigating to:", url)  # Debug print to check what URL is being loaded
     driver.get(url)
     time.sleep(0.5)
     soup = BeautifulSoup(driver.page_source, 'html.parser')
@@ -82,25 +82,33 @@ def click_load_more(driver):
         print(f"Failed to click Load More: {e}")
 
 
-urls, count = scrape_news_business()
-print(f"Found {count} articles")
+innovation_urls = scrape_news('innovation')
+business_urls = scrape_news('business')
+culture_urls = scrape_news('culture')
+isreal_gaze_urls = scrape_news('news/topics/c2vdnvdg6xxt')
+ukrainian_news_urls = scrape_news('news/war-in-ukraine')
+
+urls = innovation_urls + business_urls + culture_urls + isreal_gaze_urls + ukrainian_news_urls
+
 
 #scrape the detailed content
 articles = []
 options = webdriver.ChromeOptions()
-# Uncomment the next line to run in headless mode once debugging is complete
 options.add_argument('--headless')
 driver = webdriver.Chrome(options=options)
-for url in urls:
+for url in tqdm(urls, desc="Scraping articles details"):
     detailed_content = scrape_detailed_page(driver, url)
     articles.append(detailed_content)
 
 driver.quit()
 
+filtered_articles = [article for article in articles if article['body'] != "No body found" and article['time'] != "No time found"]
+
+
 with open("bbc_articles.csv", "w", newline='', encoding='utf-8') as file:
     writer = csv.DictWriter(file, fieldnames=["id", "url", "headline", "body", "time"])
     writer.writeheader()
-    for i, article in enumerate(articles, 1):
+    for i, article in enumerate(filtered_articles, 1):
         writer.writerow({"id": i, **article})
 
-print(f"Saved {len(articles)} articles to 'bbc_articles.csv'")
+print(f"Saved {len(filtered_articles)} articles to 'bbc_articles.csv'")
