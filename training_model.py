@@ -21,18 +21,52 @@ filterwarnings('ignore')
 from datetime import datetime
 import time
 
-def yield_tokens(data_iter):
-    tokenizer = get_tokenizer("basic_english")
+import nltk
+
+import re
+
+from nltk.corpus import stopwords
+from nltk.stem import WordNetLemmatizer
+
+# nltk.download('stopwords')
+# nltk.download('wordnet')
+
+
+def yield_tokens(data_iter, tokenizer):
     for text in data_iter:
         yield tokenizer(text)
+
+def pre_process_data(df, tokenizer):
+    # Lowercase conversion
+    df['Text'] = df['Text'].apply(lambda x: x.lower())
+    
+    # Remove links
+    df['Text'] = df['Text'].apply(lambda x: re.sub(r'http\S+', '', x))
+
+    # Remove stopwords
+    stop_words = set(stopwords.words('english'))
+    df['Text'] = df['Text'].apply(lambda x: ' '.join([word for word in x.split() if word not in stop_words]))
+
+    # Lemmatization
+    lemmatizer = WordNetLemmatizer()
+    df['Text'] = df['Text'].apply(lambda x: ' '.join([lemmatizer.lemmatize(word) for word in x.split()]))
+    
+    return df
 
 # Load data and prepare vocab
 def prepare_data_and_vocab():
     train_df = pd.read_csv('./data/bbc_news_train.csv')
     tokenizer = get_tokenizer('basic_english')
-    vocab = build_vocab_from_iterator(yield_tokens(train_df['Text']), specials=["<unk>"])
+    
+    # Pre-process data
+    train_df = pre_process_data(train_df, tokenizer)
+    
+    # Build vocabulary
+    vocab = build_vocab_from_iterator(yield_tokens(train_df['Text'], tokenizer), specials=["<unk>"])
     vocab.set_default_index(vocab["<unk>"])
+    
     return train_df, vocab, tokenizer
+
 
 def text_pipeline(x, vocab):
     tokenizer = get_tokenizer("basic_english")
@@ -73,13 +107,11 @@ class MultiHeadAttentionLayer(nn.Module):
         self.multihead_attn = nn.MultiheadAttention(embed_dim=embed_dim, num_heads=num_heads)
         
     def forward(self, embeddings):
-        # MultiheadAttention expects input in shape (seq_len, batch_size, embed_dim)
         embeddings = embeddings.permute(1, 0, 2)
         attn_output, attn_output_weights = self.multihead_attn(embeddings, embeddings, embeddings)
-        # Convert back to (batch_size, seq_len, embed_dim) for compatibility with further layers
         attn_output = attn_output.permute(1, 0, 2)
-        # Here, we simply average the outputs over the sequence length dimension to get a single vector per sequence.
-        return attn_output.mean(dim=1), attn_output_weights
+        max_pooled_output = torch.max(attn_output, dim=1)[0]  # Use max pooling along the sequence dimension
+        return max_pooled_output, attn_output_weights
     
 class Attention(nn.Module):
     """A simple attention layer. This can be used to compute attention weights and apply them to the input embeddings."""
@@ -98,41 +130,53 @@ class Attention(nn.Module):
         context_vector = torch.sum(embeddings * attention_weights.unsqueeze(2), dim=1)
         return context_vector, attention_weights
 
-# Define the model
+# Define the modelclass TextClassifier(nn.Module):
 class TextClassifier(nn.Module):
     """A text classifier model with an attention mechanism and multiple hidden layers."""
     def __init__(self, vocab_size, embed_dim, num_class, num_heads):
         super(TextClassifier, self).__init__()
         self.embedding = nn.Embedding(vocab_size, embed_dim)  # Embedding layer
-        self.dropout1 = nn.Dropout(0.5)  # First dropout layer
+        self.dropout1 = nn.Dropout(0.6)  # First dropout layer
         
         # MultiHead Attention Layer
         self.attention = MultiHeadAttentionLayer(embed_dim, num_heads)
         
-        # Additional hidden layers with increased dropout
+        # Additional hidden layers
         self.fc1 = nn.Linear(embed_dim, 512)  # First hidden layer
         self.dropout2 = nn.Dropout(0.6)  # Second dropout layer
         self.fc2 = nn.Linear(512, 256)  # Second hidden layer
         self.dropout3 = nn.Dropout(0.6)  # Third dropout layer
-        self.fc3 = nn.Linear(256, num_class)  # Output layer
+        self.fc3 = nn.Linear(256, 256)  # Third hidden layer
+        self.dropout4 = nn.Dropout(0.6)  # Fourth dropout layer
+        self.fc4 = nn.Linear(256, 128)  # Fourth hidden layer
+        self.dropout5 = nn.Dropout(0.6)  # Fifth dropout layer
+        self.fc5 = nn.Linear(128, 64)  # Fifth hidden layer
+        self.dropout6 = nn.Dropout(0.6)  # Sixth dropout layer
+        self.fc6 = nn.Linear(64, num_class)  # Output layer
 
     def forward(self, text):
+        # Embedding and initial dropout
         embedded = self.embedding(text)
         embedded = self.dropout1(embedded)
         
         # Apply attention
         context_vector, attention_weights = self.attention(embedded)
         
-        # Passing through the first hidden layer
+        # Passing through the hidden layers with activation functions and dropout
         hidden1 = F.leaky_relu(self.fc1(context_vector))
         hidden1 = self.dropout2(hidden1)
-        
-        # Passing through the second hidden layer
         hidden2 = F.leaky_relu(self.fc2(hidden1))
         hidden2 = self.dropout3(hidden2)
-        
-        # Output layer
-        output = self.fc3(hidden2)
+        hidden3 = F.leaky_relu(self.fc3(hidden2))
+        hidden3 = self.dropout4(hidden3)
+        hidden4 = F.leaky_relu(self.fc4(hidden3))
+        hidden4 = self.dropout5(hidden4)
+        hidden5 = F.leaky_relu(self.fc5(hidden4))
+        hidden5 = self.dropout6(hidden5)
+
+        # Output layer without activation (assuming a classification task with logits output)
+        output = self.fc6(hidden5)
+
         return output
 
 def train(dataloader, model, loss_fn, optimizer, device):
