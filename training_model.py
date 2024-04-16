@@ -100,25 +100,39 @@ class Attention(nn.Module):
 
 # Define the model
 class TextClassifier(nn.Module):
-    """"A simple text classifier model with an attention mechanism. This model will be used to classify news articles into different categories."""
+    """A text classifier model with an attention mechanism and multiple hidden layers."""
     def __init__(self, vocab_size, embed_dim, num_class, num_heads):
         super(TextClassifier, self).__init__()
-        self.embedding = nn.Embedding(vocab_size, embed_dim) # embedding layer
-        self.dropout = nn.Dropout(0.5) # dropout layer
+        self.embedding = nn.Embedding(vocab_size, embed_dim)  # Embedding layer
+        self.dropout1 = nn.Dropout(0.5)  # First dropout layer
+        
+        # MultiHead Attention Layer
+        self.attention = MultiHeadAttentionLayer(embed_dim, num_heads)
+        
+        # Additional hidden layers with increased dropout
+        self.fc1 = nn.Linear(embed_dim, 512)  # First hidden layer
+        self.dropout2 = nn.Dropout(0.6)  # Second dropout layer
+        self.fc2 = nn.Linear(512, 256)  # Second hidden layer
+        self.dropout3 = nn.Dropout(0.6)  # Third dropout layer
+        self.fc3 = nn.Linear(256, num_class)  # Output layer
 
-        self.attention = MultiHeadAttentionLayer(embed_dim, num_heads) # attention layer
-        #self.attention = Attention(embed_dim, 128) # attention layer
-
-        self.fc1 = nn.Linear(embed_dim, 128) # hidden layer
-        self.fc2 = nn.Linear(128, num_class) # output layer
-    
     def forward(self, text):
         embedded = self.embedding(text)
+        embedded = self.dropout1(embedded)
+        
         # Apply attention
         context_vector, attention_weights = self.attention(embedded)
-
-        hidden = F.leaky_relu(self.fc1(context_vector))
-        output = self.fc2(hidden)
+        
+        # Passing through the first hidden layer
+        hidden1 = F.leaky_relu(self.fc1(context_vector))
+        hidden1 = self.dropout2(hidden1)
+        
+        # Passing through the second hidden layer
+        hidden2 = F.leaky_relu(self.fc2(hidden1))
+        hidden2 = self.dropout3(hidden2)
+        
+        # Output layer
+        output = self.fc3(hidden2)
         return output
 
 def train(dataloader, model, loss_fn, optimizer, device):
@@ -255,7 +269,7 @@ def main():
                     best_model_state_global = model.state_dict()
                     best_fold = fold
                     best_accuracy = accuracy
-                    torch.save(best_model_state_global, "topic_classifier.pth")
+                    torch.save(best_model_state_global, "./models/topic_classifier.pth")
                     print(f"{Fore.GREEN}New best model found for fold {fold} with validation loss {best_val_loss_global:.4f}{Style.RESET_ALL}")
                 early_stopping_counter = 0
             # If the val loss is not decreasing then we increase the early stopping counter
