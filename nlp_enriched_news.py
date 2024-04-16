@@ -71,7 +71,7 @@ nlp = spacy.load('en_core_web_lg')  # For entity extraction
 vectorizer = joblib.load('./models/tfidf_vectorizer.pkl')
 
 # Load the data and keywords
-data = pd.read_csv('./data/news.csv')
+data = pd.read_csv('./data/bbc_articles.csv')
 keywords = pd.read_csv('./data/environment_keywords.txt', header=None)[0].tolist()
 
 # Compute embeddings for the keywords
