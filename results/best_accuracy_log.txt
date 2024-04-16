@@ -9,3 +9,5 @@
 2024-04-08 11:01:59 - Best accuracy: 98.79% in fold 3. Test accuracy: 99.18%. Time taken: 1002.77 seconds, using device: cpu # 32 batch size
 2024-04-08 11:23:45 - Best accuracy: 98.25% in fold 4. Test accuracy: 99.18%. Time taken: 665.66 seconds, using device: cpu
 2024-04-08 11:34:18 - Best accuracy: 98.12% in fold 0. Test accuracy: 99.46%. Time taken: 609.75 seconds, using device: cpu
+2024-04-16 11:52:14 - Best accuracy: 100.00% in fold 0. Test accuracy: 47.62%. Time taken: 1084.87 seconds, using device: cuda
+2024-04-16 12:15:20 - Best accuracy: 100.00% in fold 3. Test accuracy: 99.86%. Time taken: 1300.95 seconds, using device: cuda
