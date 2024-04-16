@@ -315,7 +315,7 @@ def main():
     try:
         with open('./results/best_accuracy_log.txt', 'a') as f:
             current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            f.write(f"{current_time} - Best accuracy: {(best_accuracy * 100):.2f}% in fold {best_fold}. Test accuracy: {(test_accuracy * 100):.2f}%. Time taken: {time.time() - start_time:.2f} seconds, using device: {device}\n")
+            f.write(f"{current_time} - Best accuracy: {(best_accuracy * 100):.2f}% in fold {best_fold}. Test accuracy: {(test_accuracy * 100):.2f}%. Time taken: {((time.time() - start_time) / 60 ):.f2} minutes, using device: {device}\n")
             print(f"Best accuracy logged to file")
     except Exception as e:
         print(f"Error writing to log file: {e}")
