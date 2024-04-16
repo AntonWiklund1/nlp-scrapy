@@ -164,7 +164,7 @@ def test(model,device):
         category_to_int = pickle.load(handle)
     test_df['Category'] = test_df['Category'].map(category_to_int)
     test_dataset = NewsDataset(test_df['Text'].reset_index(drop=True), test_df['Category'].reset_index(drop=True), vocab)
-    test_loader = DataLoader(test_dataset, batch_size=32, collate_fn=collate_batch)
+    test_loader = DataLoader(test_dataset, batch_size=constants.batch_size, collate_fn=collate_batch)
     model.eval()
     total_acc, total_count = 0, 0
     with torch.no_grad():
@@ -222,8 +222,8 @@ def main():
         train_subsampler = torch.utils.data.SubsetRandomSampler(train_ids)
         val_subsampler = torch.utils.data.SubsetRandomSampler(val_ids)
         
-        train_loader = DataLoader(full_dataset, batch_size=32, sampler=train_subsampler, collate_fn=collate_batch)
-        val_loader = DataLoader(full_dataset, batch_size=32, sampler=val_subsampler, collate_fn=collate_batch)
+        train_loader = DataLoader(full_dataset, batch_size=constants.batch_size, sampler=train_subsampler, collate_fn=collate_batch)
+        val_loader = DataLoader(full_dataset, batch_size=constants.batch_size, sampler=val_subsampler, collate_fn=collate_batch)
         
         # Define the model, loss function, and optimizer
         model = TextClassifier(len(vocab), constants.emded_dim, constants.num_class, num_heads=4)
@@ -274,7 +274,7 @@ def main():
 
     # Save the best model
     if best_model_state_global is not None:
-        torch.save(best_model_state_global, "topic_classifier.pth")
+        torch.save(best_model_state_global, "./models/topic_classifier.pth")
         print(f"Best model saved with validation loss {best_val_loss_global:.4f} from fold {best_fold}")
 
     # Test the best model
