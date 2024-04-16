@@ -55,20 +55,25 @@ def scrape_news(category):
     print(f"Found {len(urls)} articles for {category}")
     return urls
 
-def scrape_detailed_page(driver, url):
+def scrape_detailed_page(driver, url, category):
     driver.get(url)
     time.sleep(0.5)
     soup = BeautifulSoup(driver.page_source, 'html.parser')
     headline = soup.find('h1')
-    body = soup.find('section', attrs={"data-component": "text-block"})
+    sections = soup.find_all('section', attrs={"data-component": "text-block"})
     time_elem = soup.find('time')
     
+    # Extracting text from each section and concatenating it
+    body_text = ' '.join(section.get_text(separator=' ', strip=True) for section in sections)
+
     return {
-        "headline": headline.text if headline else "No headline found",
-        "body": body.text if body else "No body found",
-        "time": time_elem.text if time_elem else "No time found",
-        "url": url if url else "No url found"
+        "headline": headline.text.strip() if headline else "No headline found",
+        "body": body_text if body_text else "No body found",
+        "time": time_elem.text.strip() if time_elem else "No time found",
+        "url": url,
+        "category": category
     }
+
 
 
 def click_load_more(driver):
@@ -81,34 +86,42 @@ def click_load_more(driver):
     except Exception as e:
         print(f"Failed to click Load More: {e}")
 
+categories = [
+    'innovation',
+    'business',
+    'culture',
+    'news/topics/c2vdnvdg6xxt',  # Israel Gaze
+    'news/war-in-ukraine'        # Ukrainian News
+]
 
-innovation_urls = scrape_news('innovation')
-business_urls = scrape_news('business')
-culture_urls = scrape_news('culture')
-isreal_gaze_urls = scrape_news('news/topics/c2vdnvdg6xxt')
-ukrainian_news_urls = scrape_news('news/war-in-ukraine')
-
-urls = innovation_urls + business_urls + culture_urls + isreal_gaze_urls + ukrainian_news_urls
-
+category_urls = {}
 
 #scrape the detailed content
 articles = []
 options = webdriver.ChromeOptions()
 options.add_argument('--headless')
 driver = webdriver.Chrome(options=options)
-for url in tqdm(urls, desc="Scraping articles details"):
-    detailed_content = scrape_detailed_page(driver, url)
-    articles.append(detailed_content)
+
+for category in tqdm(categories, desc="Scraping categories"):
+    # Rename specific categories to 'politics'
+    if category in ['news/topics/c2vdnvdg6xxt', 'news/war-in-ukraine']:
+        category_label = 'politics'
+    else:
+        category_label = category
+    
+    category_urls[category] = scrape_news(category)
+    for url in tqdm(category_urls[category], desc=f"Scraping articles for {category_label}"):
+        detailed_content = scrape_detailed_page(driver, url, category_label)
+        articles.append(detailed_content)
 
 driver.quit()
 
 filtered_articles = [article for article in articles if article['body'] != "No body found" and article['time'] != "No time found"]
 
-
-with open("bbc_articles.csv", "w", newline='', encoding='utf-8') as file:
-    writer = csv.DictWriter(file, fieldnames=["id", "url", "headline", "body", "time"])
+with open("./data/processed/bbc_articles.csv", "w", newline='', encoding='utf-8') as file:
+    writer = csv.DictWriter(file, fieldnames=["id", "url", "headline", "body", "time", "category"])
     writer.writeheader()
     for i, article in enumerate(filtered_articles, 1):
         writer.writerow({"id": i, **article})
 
-print(f"Saved {len(filtered_articles)} articles to 'bbc_articles.csv'")
+print(f"Saved {len(filtered_articles)} articles to './data/processed/bbc_articles.csv'")
