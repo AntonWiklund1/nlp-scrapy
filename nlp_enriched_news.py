@@ -55,7 +55,7 @@ def text_pipeline(x, vocab):
     return [vocab[token] for token in tokenizer(x)]
 
 # Recreate the model structure
-model = TextClassifier(len(vocab), constants.emded_dim, constants.num_class, num_heads=8)
+model = TextClassifier(len(vocab), constants.emded_dim, constants.num_class, num_heads=4)
 model.load_state_dict(torch.load("./models/topic_classifier.pth"))
 model.eval()  # Set the model to evaluation mode
 
