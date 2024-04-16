@@ -20,10 +20,22 @@ import torch.nn as nn
 from torch.nn.utils.rnn import pad_sequence 
 import constants
 
-from torchtext.vocab import build_vocab_from_iterator
 from torchtext.data.utils import get_tokenizer
 
 import pickle
+
+import nltk
+
+import re
+
+from nltk.corpus import stopwords
+from nltk.stem import WordNetLemmatizer
+
+from sklearn.metrics import accuracy_score, precision_recall_fscore_support
+
+#nltk.download('stopwords')
+#nltk.download('wordnet')
+
 
 # Initialize the models for embeddings 
 sentence_model = SentenceTransformer('all-MiniLM-L6-v2')
@@ -46,17 +58,16 @@ with open('category_to_int.pkl', 'rb') as handle:
     category_to_int = pickle.load(handle)
 
 
-
-vocab_size = len(vocab)
-
 # This assumes you also have the tokenizer and vocab ready
 def text_pipeline(x, vocab):
     tokenizer = get_tokenizer("basic_english")
     return [vocab[token] for token in tokenizer(x)]
 
+vocab_size = len(vocab)
+
 # Recreate the model structure
-model = TextClassifier(len(vocab), constants.emded_dim, constants.num_class, num_heads=4)
-model.load_state_dict(torch.load("./models/topic_classifier.pth"))
+model = TextClassifier(len(vocab), constants.emded_dim, constants.num_class, num_heads=8)
+model.load_state_dict(torch.load("./models/topic_classifier.pth", map_location=torch.device('cpu')))
 model.eval()  # Set the model to evaluation mode
 
 # Load the RoBERTa model for sentiment analysis
@@ -67,11 +78,9 @@ roberta_sentiment = pipeline("sentiment-analysis", model=roberta_model, tokenize
 # Load other necessary libraries and models
 nlp = spacy.load('en_core_web_lg')  # For entity extraction
 
-# Load the models for topic classification
-vectorizer = joblib.load('./models/tfidf_vectorizer.pkl')
 
 # Load the data and keywords
-data = pd.read_csv('./data/bbc_articles.csv')
+data = pd.read_csv('./data/processed/bbc_articles.csv')
 keywords = pd.read_csv('./data/environment_keywords.txt', header=None)[0].tolist()
 
 # Compute embeddings for the keywords
@@ -94,18 +103,20 @@ def classify_sentiment(text):
         return 'Neutral'
     
 def pre_process_data(df):
-    """Preprocess the data by removing duplicates, missing values, links, and images."""
-    # Remove missing values
-    df = df.dropna(subset=['headline', 'body'])
-    # Remove duplicates
-    df = df.drop_duplicates(subset=['headline', 'body'])
+    # Lowercase conversion
+    df['body'] = df['body'].apply(lambda x: x.lower())
+    
+    #remove links
+    df['body'] = df['body'].apply(lambda x: re.sub(r'http\S+', '', x))
 
-    #remove links from the body
-    df['body'] = df['body'].str.replace(r'http\S+', '', case=False)
+    # Remove stopwords
+    stop_words = set(stopwords.words('english'))
+    df['body'] = df['body'].apply(lambda x: ' '.join([word for word in x.split() if word not in stop_words]))
 
-    #Remove images from the body
-    df['body'] = df['body'].str.replace(r'\w*\.(?:jpg|gif|png)', '', case=False)
-
+    # Lemmatization
+    lemmatizer = WordNetLemmatizer()
+    df['body'] = df['body'].apply(lambda x: ' '.join([lemmatizer.lemmatize(word) for word in x.split()]))
+    
     return df
 
 def compute_similarity_and_keyword(text, keyword_embeddings, keywords):
@@ -161,10 +172,10 @@ def process_data(df):
     tqdm.pandas()  # Initialize tqdm for pandas apply
 
     df = pre_process_data(df)
+
     print("Extracting entities from headlines and bodies...")
     df['entities'] = df['headline'].progress_apply(extract_entities) + df['body'].progress_apply(extract_entities)
-    
-    # Process data with confidence threshold
+
     df = predict_categories(df)
     
     print("Analyzing sentiment of articles...")
@@ -178,6 +189,23 @@ def process_data(df):
     print("Finding potential scandals...")
     df['scandal'] = df.progress_apply(lambda x: find_scandals(x['keyword_similarity'], x['entities'], x['sentiment']), axis=1)
 
+    # Evaluation
+    if 'category' in df.columns:
+        # Assuming 'category' column is the actual category names as scraped from BBC News
+        actual_categories = df['category']  # Actual categories
+        predicted_categories = df['predicted_category']  # Predicted categories from your model
+        
+        # Metrics calculation
+        accuracy = accuracy_score(actual_categories, predicted_categories)
+        precision, recall, f1, _ = precision_recall_fscore_support(actual_categories, predicted_categories, average='weighted')
+        
+        print(f"Accuracy: {accuracy}")
+        print(f"Precision: {precision}")
+        print(f"Recall: {recall}")
+        print(f"F1-Score: {f1}")
+    else:
+        print("Actual category column not found.")
+    
     # Reorder columns for better readability
     try:
         return df[['predicted_category', 'sentiment', 'entities', 'headline', 'link', 'date', 'body', 'keyword_similarity','scandal','most_similar_keyword']]
