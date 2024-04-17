@@ -155,7 +155,7 @@ class Attention(nn.Module):
 # Define the modelclass TextClassifier(nn.Module):
 class TextClassifier(nn.Module):
     """A text classifier model with an attention mechanism and multiple hidden layers."""
-    def __init__(self, vocab_size, embed_dim, num_class, num_heads = 2):
+    def __init__(self, vocab_size, embed_dim, num_class, num_heads = 4):
         super(TextClassifier, self).__init__()
         self.embedding = nn.Embedding(vocab_size, embed_dim)  # Embedding layer
         self.dropout = nn.Dropout(0.5)  # First dropout layer
