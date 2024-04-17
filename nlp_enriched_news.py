@@ -66,7 +66,7 @@ def text_pipeline(x, vocab):
 vocab_size = len(vocab)
 
 # Recreate the model structure
-model = TextClassifier(len(vocab), constants.emded_dim, constants.num_class, num_heads=8)
+model = TextClassifier(len(vocab), constants.emded_dim, constants.num_class)
 model.load_state_dict(torch.load("./models/topic_classifier.pth", map_location=torch.device('cpu')))
 model.eval()  # Set the model to evaluation mode
 
@@ -145,17 +145,16 @@ def find_scandals(keyword_similarity, entities, sentiment):
     else:
         return 'Normal'
 
-def predict_categories(df, threshold=0.6):
+def predict_categories(df):
     int_to_category = {v: k for k, v in category_to_int.items()}
-    print("Predicting article categories with confidence scores...")
     results = []
     
-    for text in df['headline']:
+    for text in tqdm(df['body'], desc="Predicting categories", total=df.shape[0]):
         text_tensor = torch.tensor(text_pipeline(text, vocab), dtype=torch.int64).unsqueeze(0)  # Add batch dimension
         with torch.no_grad():
             probabilities = torch.softmax(model(text_tensor), dim=1)
             max_prob, predicted_category = torch.max(probabilities, dim=1)
-            category_name = int_to_category[predicted_category.item()] if max_prob.item() >= threshold else None
+            category_name = int_to_category[predicted_category.item()]
             results.append((category_name, max_prob.item()))
     
     df['predicted_category'] = [res[0] for res in results]
@@ -189,22 +188,25 @@ def process_data(df):
     print("Finding potential scandals...")
     df['scandal'] = df.progress_apply(lambda x: find_scandals(x['keyword_similarity'], x['entities'], x['sentiment']), axis=1)
 
-    # Evaluation
-    if 'category' in df.columns:
-        # Assuming 'category' column is the actual category names as scraped from BBC News
-        actual_categories = df['category']  # Actual categories
-        predicted_categories = df['predicted_category']  # Predicted categories from your model
-        
-        # Metrics calculation
-        accuracy = accuracy_score(actual_categories, predicted_categories)
-        precision, recall, f1, _ = precision_recall_fscore_support(actual_categories, predicted_categories, average='weighted')
-        
-        print(f"Accuracy: {accuracy}")
-        print(f"Precision: {precision}")
-        print(f"Recall: {recall}")
-        print(f"F1-Score: {f1}")
-    else:
-        print("Actual category column not found.")
+    actual_categories = df['category'].tolist()  # Fill None with 'Unknown'
+    predicted_categories = df['predicted_category'].tolist()  # Fill None with 'Unknown'
+
+    # Check if there are any None values left
+    print("Actual categories contain None:", None in actual_categories)
+    print("Predicted categories contain None:", None in predicted_categories)
+
+    #print how many None in the predicted categories
+    print("Number of None values in predicted categories:", predicted_categories.count(None))
+
+    # Metrics calculation
+    accuracy = accuracy_score(actual_categories, predicted_categories)
+    precision, recall, f1, _ = precision_recall_fscore_support(actual_categories, predicted_categories, average='weighted')
+
+    print(f"Accuracy: {accuracy}")
+    print(f"Precision: {precision}")
+    print(f"Recall: {recall}")
+    print(f"F1-Score: {f1}")
+
     
     # Reorder columns for better readability
     try:
