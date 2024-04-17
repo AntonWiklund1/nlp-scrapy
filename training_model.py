@@ -28,6 +28,24 @@ import re
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 
+from tqdm.auto import tqdm
+
+from sklearn.metrics import accuracy_score, precision_recall_fscore_support
+
+
+from sklearn.metrics import confusion_matrix
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+def plot_confusion_matrix(actuals, predictions, classes):
+    cm = confusion_matrix(actuals, predictions)
+    plt.figure(figsize=(10, 7))
+    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=classes, yticklabels=classes)
+    plt.xlabel('Predicted Labels')
+    plt.ylabel('True Labels')
+    plt.title('Confusion Matrix')
+    plt.savefig('./results/confusion_matrix.png')
+
 # nltk.download('stopwords')
 # nltk.download('wordnet')
 
@@ -36,20 +54,20 @@ def yield_tokens(data_iter, tokenizer):
     for text in data_iter:
         yield tokenizer(text)
 
-def pre_process_data(df, tokenizer):
+def pre_process_data(df, text='Text'):
     # Lowercase conversion
-    df['Text'] = df['Text'].apply(lambda x: x.lower())
+    df[f'{text}'] = df[f'{text}'].apply(lambda x: x.lower())
     
     # Remove links
-    df['Text'] = df['Text'].apply(lambda x: re.sub(r'http\S+', '', x))
+    df[f'{text}'] = df[f'{text}'].apply(lambda x: re.sub(r'http\S+', '', x))
 
     # Remove stopwords
     stop_words = set(stopwords.words('english'))
-    df['Text'] = df['Text'].apply(lambda x: ' '.join([word for word in x.split() if word not in stop_words]))
+    df[f'{text}'] = df[f'{text}'].apply(lambda x: ' '.join([word for word in x.split() if word not in stop_words]))
 
     # Lemmatization
     lemmatizer = WordNetLemmatizer()
-    df['Text'] = df['Text'].apply(lambda x: ' '.join([lemmatizer.lemmatize(word) for word in x.split()]))
+    df[f'{text}'] = df[f'{text}'].apply(lambda x: ' '.join([lemmatizer.lemmatize(word) for word in x.split()]))
     
     return df
 
@@ -59,13 +77,17 @@ def prepare_data_and_vocab():
     tokenizer = get_tokenizer('basic_english')
     
     # Pre-process data
-    train_df = pre_process_data(train_df, tokenizer)
+    train_df = pre_process_data(train_df)
     
     # Build vocabulary
     vocab = build_vocab_from_iterator(yield_tokens(train_df['Text'], tokenizer), specials=["<unk>"])
     vocab.set_default_index(vocab["<unk>"])
+
+    with open('vocab.pkl', 'wb') as vocab_file:
+        pickle.dump(vocab, vocab_file)
+
     
-    return train_df, vocab, tokenizer
+    return train_df
 
 
 def text_pipeline(x, vocab):
@@ -133,49 +155,34 @@ class Attention(nn.Module):
 # Define the modelclass TextClassifier(nn.Module):
 class TextClassifier(nn.Module):
     """A text classifier model with an attention mechanism and multiple hidden layers."""
-    def __init__(self, vocab_size, embed_dim, num_class, num_heads):
+    def __init__(self, vocab_size, embed_dim, num_class, num_heads = 2):
         super(TextClassifier, self).__init__()
         self.embedding = nn.Embedding(vocab_size, embed_dim)  # Embedding layer
-        self.dropout1 = nn.Dropout(0.6)  # First dropout layer
+        self.dropout = nn.Dropout(0.5)  # First dropout layer
         
         # MultiHead Attention Layer
         self.attention = MultiHeadAttentionLayer(embed_dim, num_heads)
         
         # Additional hidden layers
         self.fc1 = nn.Linear(embed_dim, 512)  # First hidden layer
-        self.dropout2 = nn.Dropout(0.6)  # Second dropout layer
-        self.fc2 = nn.Linear(512, 256)  # Second hidden layer
-        self.dropout3 = nn.Dropout(0.6)  # Third dropout layer
-        self.fc3 = nn.Linear(256, 256)  # Third hidden layer
-        self.dropout4 = nn.Dropout(0.6)  # Fourth dropout layer
-        self.fc4 = nn.Linear(256, 128)  # Fourth hidden layer
-        self.dropout5 = nn.Dropout(0.6)  # Fifth dropout layer
-        self.fc5 = nn.Linear(128, 64)  # Fifth hidden layer
-        self.dropout6 = nn.Dropout(0.6)  # Sixth dropout layer
-        self.fc6 = nn.Linear(64, num_class)  # Output layer
+        self.fc2 = nn.Linear(512, 256)  # Second hidden layerr
+        self.fc3 = nn.Linear(256, 128)  # Output layer
+        self.fc4 = nn.Linear(128, num_class)  # Output layer
 
     def forward(self, text):
         # Embedding and initial dropout
         embedded = self.embedding(text)
-        embedded = self.dropout1(embedded)
+
+        embedded = self.dropout(embedded)
         
         # Apply attention
         context_vector, attention_weights = self.attention(embedded)
         
         # Passing through the hidden layers with activation functions and dropout
         hidden1 = F.leaky_relu(self.fc1(context_vector))
-        hidden1 = self.dropout2(hidden1)
         hidden2 = F.leaky_relu(self.fc2(hidden1))
-        hidden2 = self.dropout3(hidden2)
         hidden3 = F.leaky_relu(self.fc3(hidden2))
-        hidden3 = self.dropout4(hidden3)
-        hidden4 = F.leaky_relu(self.fc4(hidden3))
-        hidden4 = self.dropout5(hidden4)
-        hidden5 = F.leaky_relu(self.fc5(hidden4))
-        hidden5 = self.dropout6(hidden5)
-
-        # Output layer without activation (assuming a classification task with logits output)
-        output = self.fc6(hidden5)
+        output = self.fc4(hidden3)
 
         return output
 
@@ -216,24 +223,118 @@ def evaluate(dataloader, model, loss_fn, device):
 def test(model,device):
     """Test the model on the test set and print the accuracy."""
     test_df = pd.read_csv('./data/bbc_news_tests.csv')
+
     with open('vocab.pkl', 'rb') as vocab_file:
         vocab = pickle.load(vocab_file)
+
     with open('category_to_int.pkl', 'rb') as handle:
         category_to_int = pickle.load(handle)
+
     test_df['Category'] = test_df['Category'].map(category_to_int)
     test_dataset = NewsDataset(test_df['Text'].reset_index(drop=True), test_df['Category'].reset_index(drop=True), vocab)
     test_loader = DataLoader(test_dataset, batch_size=constants.batch_size, collate_fn=collate_batch)
+
     model.eval()
     total_acc, total_count = 0, 0
+
+    all_preds = []
+    all_labels = []
+
     with torch.no_grad():
         for X, y in test_loader:
             X, y = X.to(device), y.to(device)
             pred = model(X)
+            all_preds.extend(pred.argmax(1).cpu().numpy())
+            all_labels.extend(y.cpu().numpy())
             total_acc += (pred.argmax(1) == y).sum().item()
             total_count += y.size(0)
     accuracy = total_acc / total_count
     print(f'Test Accuracy: {(accuracy * 100):>0.1f}%')
-    return accuracy
+    return accuracy, all_preds, all_labels
+
+def test_single_sample(model, device):
+    model.eval()  # Set the model to evaluation mode
+
+    test_df = pd.read_csv('./data/bbc_news_tests.csv')
+    test_df = pre_process_data(test_df)
+
+    with open('vocab.pkl', 'rb') as vocab_file:
+        vocab = pickle.load(vocab_file)
+
+    with open('category_to_int.pkl', 'rb') as handle:
+        category_to_int = pickle.load(handle)
+
+
+    test_df['Category'] = test_df['Category'].map(category_to_int)
+    dataset = NewsDataset(test_df['Text'].reset_index(drop=True), test_df['Category'].reset_index(drop=True), vocab)
+
+    with torch.no_grad():
+        for i in range(min(len(dataset), 5)):  # Test with 5 samples
+            sample = dataset[i]
+            text, label = sample
+            text = text.unsqueeze(0).to(device)  # Add batch dimension
+            label = label.unsqueeze(0).to(device)
+            output = model(text)
+            prediction = output.argmax(1)
+            print(f"Test Sample {i}: True Label: {label.item()}, Predicted Label: {prediction.item()}")
+
+def test_scraped_data():
+
+    with open('vocab.pkl', 'rb') as vocab_file:
+        vocab = pickle.load(vocab_file)
+
+    with open('category_to_int.pkl', 'rb') as handle:
+        category_to_int = pickle.load(handle)
+
+    int_to_category = {index: category for category, index in category_to_int.items()}
+
+
+    model = TextClassifier(len(vocab), constants.emded_dim, constants.num_class)
+    model.load_state_dict(torch.load("./models/topic_classifier.pth", map_location=torch.device('cpu')))
+    model.eval()  # Set the model to evaluation mode
+
+    # Load the data and keywords
+    df = pd.read_csv('./data/processed/bbc_articles.csv')
+
+    # Pre-process data
+    df = pre_process_data(df, text='body')
+
+    # Compute embeddings for the keywords
+    results = []
+    
+    for text in tqdm(df['body'], desc="Predicting categories", total=df.shape[0]):
+        text_tensor = torch.tensor(text_pipeline(text, vocab), dtype=torch.int64).unsqueeze(0)  # Add batch dimension
+        with torch.no_grad():
+            probabilities = torch.softmax(model(text_tensor), dim=1)
+            max_prob, predicted_category = torch.max(probabilities, dim=1)
+            category_name = int_to_category[predicted_category.item()]
+            results.append((category_name, max_prob.item()))
+    
+    df['predicted_category'] = [res[0] for res in results]
+    df['confidence'] = [res[1] for res in results]
+    
+    # Sort by confidence in descending order and select the top 300
+    df = df.sort_values(by='confidence', ascending=False).head(300)
+    
+    actual_categories = df['category'].tolist()  # Fill None with 'Unknown'
+    predicted_categories = df['predicted_category'].tolist()  # Fill None with 'Unknown'
+
+    # Check if there are any None values left
+    print("Actual categories contain None:", None in actual_categories)
+    print("Predicted categories contain None:", None in predicted_categories)
+
+    #print how many None in the predicted categories
+    print("Number of None values in predicted categories:", predicted_categories.count(None))
+
+    # Metrics calculation
+    accuracy = accuracy_score(actual_categories, predicted_categories)
+    precision, recall, f1, _ = precision_recall_fscore_support(actual_categories, predicted_categories, average='weighted')
+
+    print(f"Accuracy: {accuracy}")
+    print(f"Precision: {precision}")
+    print(f"Recall: {recall}")
+    print(f"F1-Score: {f1}")
+
 
 def main():
     start_time = time.time()
@@ -241,7 +342,10 @@ def main():
     torch.cuda.empty_cache()
   
     # Load data and prepare vocab
-    train_df, vocab, tokenizer = prepare_data_and_vocab()
+    train_df = prepare_data_and_vocab()
+
+    with open('vocab.pkl', 'rb') as vocab_file:
+        vocab = pickle.load(vocab_file)
 
     # Convert categories to integer labels
     unique_categories = train_df['Category'].unique()
@@ -284,12 +388,12 @@ def main():
         val_loader = DataLoader(full_dataset, batch_size=constants.batch_size, sampler=val_subsampler, collate_fn=collate_batch)
         
         # Define the model, loss function, and optimizer
-        model = TextClassifier(len(vocab), constants.emded_dim, constants.num_class, num_heads=4)
+        model = TextClassifier(len(vocab), constants.emded_dim, constants.num_class)
         model.to(device)
         loss_fn = nn.CrossEntropyLoss()
         optimizer = AdamW(model.parameters(), lr=0.001, weight_decay=1e-2)
-        scheduler = OneCycleLR(optimizer, max_lr=0.01, steps_per_epoch=len(train_loader), epochs=epochs)
-        #scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', factor=0.1, patience=10)
+        #scheduler = OneCycleLR(optimizer, max_lr=0.01, steps_per_epoch=len(train_loader), epochs=epochs)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', factor=0.1, patience=10)
 
         # Training and validation for the current fold
         for epoch in range(epochs):
@@ -335,11 +439,20 @@ def main():
         torch.save(best_model_state_global, "./models/topic_classifier.pth")
         print(f"Best model saved with validation loss {best_val_loss_global:.4f} from fold {best_fold}")
 
+
     # Test the best model
     model = TextClassifier(len(vocab), constants.emded_dim, constants.num_class, num_heads=4)
     model.load_state_dict(best_model_state_global)
     model.to(device)
-    test_accuracy = test(model, device)
+    test_accuracy, all_preds, all_labels = test(model, device)
+
+    category_names = [cat for cat, index in sorted(category_to_int.items(), key=lambda x: x[1])]
+
+    plot_confusion_matrix(all_labels, all_preds, category_names)
+
+    test_single_sample(model, device)
+
+    test_scraped_data()
 
     # Optionally, plot the learning curve
     plt.figure(figsize=(12, 6))
@@ -352,14 +465,11 @@ def main():
     plt.savefig('./results/learning_curve.png')
     plt.show()
 
-    # Save vocabulary and category mapping
-    with open('vocab.pkl', 'wb') as vocab_file:
-        pickle.dump(vocab, vocab_file)
 
     try:
         with open('./results/best_accuracy_log.txt', 'a') as f:
             current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            f.write(f"{current_time} - Best accuracy: {(best_accuracy * 100):.2f}% in fold {best_fold}. Test accuracy: {(test_accuracy * 100):.2f}%. Time taken: {((time.time() - start_time) / 60 ):.f2} minutes, using device: {device}\n")
+            f.write(f"{current_time} - Best accuracy: {(best_accuracy * 100):.2f}% in fold {best_fold}. Test accuracy: {(test_accuracy * 100):.2f}%. Time taken: {((time.time() - start_time) / 60 ):.2f} minutes, using device: {device}\n")
             print(f"Best accuracy logged to file")
     except Exception as e:
         print(f"Error writing to log file: {e}")
