@@ -13,3 +13,5 @@
 2024-04-16 12:15:20 - Best accuracy: 100.00% in fold 3. Test accuracy: 99.86%. Time taken: 1300.95 seconds, using device: cuda
 2024-04-16 15:43:43 - Best accuracy: 99.83% in fold 4. Test accuracy: 99.46%. Time taken: 1740.03 seconds, using device: cuda # 512 neurons and emded_dim = 256
 2024-04-16 18:55:42 - Best accuracy: 100.00% in fold 1. Test accuracy: 99.73%. Time taken: 10851.03 seconds, using device: cuda
+2024-04-17 21:06:15 - Best accuracy: 68.75% in fold 1. Test accuracy: 52.79%. Time taken: 5.97 minutes, using device: cpu
+2024-04-17 21:33:06 - Best accuracy: 50.00% in fold 4. Test accuracy: 25.58%. Time taken: 2.03 minutes, using device: cpu
