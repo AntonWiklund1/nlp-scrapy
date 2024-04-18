@@ -37,13 +37,13 @@ from sklearn.metrics import confusion_matrix
 import seaborn as sns
 import matplotlib.pyplot as plt
 
-def plot_confusion_matrix(actuals, predictions, classes):
+def plot_confusion_matrix(actuals, predictions, classes, title='Confusion Matrix'):
     cm = confusion_matrix(actuals, predictions)
     plt.figure(figsize=(10, 7))
     sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=classes, yticklabels=classes)
     plt.xlabel('Predicted Labels')
     plt.ylabel('True Labels')
-    plt.title('Confusion Matrix')
+    plt.title(f'{title}')
     plt.savefig('./results/confusion_matrix.png')
 
 # nltk.download('stopwords')
@@ -68,12 +68,20 @@ def pre_process_data(df, text='Text'):
     # Lemmatization
     lemmatizer = WordNetLemmatizer()
     df[f'{text}'] = df[f'{text}'].apply(lambda x: ' '.join([lemmatizer.lemmatize(word) for word in x.split()]))
+
+    # Remove more than one space
+    df[f'{text}'] = df[f'{text}'].apply(lambda x: re.sub(r'\s+', ' ', x))
+
+    #exprot the preprocessed data
+    df.to_csv('./data/temp/pre_prosseced.csv', index=False)
     
     return df
 
 # Load data and prepare vocab
 def prepare_data_and_vocab():
+
     train_df = pd.read_csv('./data/bbc_news_train.csv')
+    train_df = train_df.sample(frac=1).reset_index(drop=True)
     tokenizer = get_tokenizer('basic_english')
     
     # Pre-process data
@@ -82,6 +90,9 @@ def prepare_data_and_vocab():
     # Build vocabulary
     vocab = build_vocab_from_iterator(yield_tokens(train_df['Text'], tokenizer), specials=["<unk>"])
     vocab.set_default_index(vocab["<unk>"])
+
+    #print the length of the vocab
+    print(f"Length of vocab: {len(vocab)}")
 
     with open('vocab.pkl', 'wb') as vocab_file:
         pickle.dump(vocab, vocab_file)
@@ -158,16 +169,19 @@ class TextClassifier(nn.Module):
     def __init__(self, vocab_size, embed_dim, num_class, num_heads = 4):
         super(TextClassifier, self).__init__()
         self.embedding = nn.Embedding(vocab_size, embed_dim)  # Embedding layer
-        self.dropout = nn.Dropout(0.5)  # First dropout layer
+        self.dropout = nn.Dropout(0.6)  # First dropout layer
         
+        print(f"Vocabulary Size: {vocab_size}")
+        print(f"Embedding Dimension: {embed_dim}")
+        print(f"Total Weights in Embedding Matrix: {vocab_size * embed_dim:,}")
+
         # MultiHead Attention Layer
         self.attention = MultiHeadAttentionLayer(embed_dim, num_heads)
-        
+        #self.attention = Attention(embed_dim, 256)
         # Additional hidden layers
-        self.fc1 = nn.Linear(embed_dim, 512)  # First hidden layer
-        self.fc2 = nn.Linear(512, 256)  # Second hidden layerr
-        self.fc3 = nn.Linear(256, 128)  # Output layer
-        self.fc4 = nn.Linear(128, num_class)  # Output layer
+        self.fc1 = nn.Linear(embed_dim, 256)  # First hidden layer
+        self.fc2 = nn.Linear(256, 128)  # Second hidden layerr
+        self.fc3 = nn.Linear(128, num_class)  # Output layer
 
     def forward(self, text):
         # Embedding and initial dropout
@@ -181,8 +195,7 @@ class TextClassifier(nn.Module):
         # Passing through the hidden layers with activation functions and dropout
         hidden1 = F.leaky_relu(self.fc1(context_vector))
         hidden2 = F.leaky_relu(self.fc2(hidden1))
-        hidden3 = F.leaky_relu(self.fc3(hidden2))
-        output = self.fc4(hidden3)
+        output = self.fc3(hidden2)
 
         return output
 
@@ -223,6 +236,8 @@ def evaluate(dataloader, model, loss_fn, device):
 def test(model,device):
     """Test the model on the test set and print the accuracy."""
     test_df = pd.read_csv('./data/bbc_news_tests.csv')
+
+    test_df = pre_process_data(test_df, text='Text')
 
     with open('vocab.pkl', 'rb') as vocab_file:
         vocab = pickle.load(vocab_file)
@@ -330,10 +345,14 @@ def test_scraped_data():
     accuracy = accuracy_score(actual_categories, predicted_categories)
     precision, recall, f1, _ = precision_recall_fscore_support(actual_categories, predicted_categories, average='weighted')
 
+    plot_confusion_matrix(actual_categories, predicted_categories, list(category_to_int.keys()), title='Confusion Matrix Scrape Data')
+
     print(f"Accuracy: {accuracy}")
     print(f"Precision: {precision}")
     print(f"Recall: {recall}")
     print(f"F1-Score: {f1}")
+
+    return accuracy
 
 
 def main():
@@ -367,6 +386,9 @@ def main():
     best_val_loss_global = float('inf')
     best_model_state_global = None
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+
     print(f"Using device: {device}")
 
     for fold, (train_ids, val_ids) in enumerate(kfold.split(full_dataset)):
@@ -391,9 +413,9 @@ def main():
         model = TextClassifier(len(vocab), constants.emded_dim, constants.num_class)
         model.to(device)
         loss_fn = nn.CrossEntropyLoss()
-        optimizer = AdamW(model.parameters(), lr=0.001, weight_decay=1e-2)
-        #scheduler = OneCycleLR(optimizer, max_lr=0.01, steps_per_epoch=len(train_loader), epochs=epochs)
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', factor=0.1, patience=10)
+        optimizer = AdamW(model.parameters(), lr=3e-4, weight_decay=1e-2)
+        scheduler = OneCycleLR(optimizer, max_lr=1e-2, steps_per_epoch=len(train_loader), epochs=epochs)
+        #scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', factor=0.1, patience=10)
 
         # Training and validation for the current fold
         for epoch in range(epochs):
@@ -441,18 +463,18 @@ def main():
 
 
     # Test the best model
-    model = TextClassifier(len(vocab), constants.emded_dim, constants.num_class, num_heads=4)
+    model = TextClassifier(len(vocab), constants.emded_dim, constants.num_class)
     model.load_state_dict(best_model_state_global)
     model.to(device)
     test_accuracy, all_preds, all_labels = test(model, device)
 
     category_names = [cat for cat, index in sorted(category_to_int.items(), key=lambda x: x[1])]
 
-    plot_confusion_matrix(all_labels, all_preds, category_names)
+    plot_confusion_matrix(all_labels, all_preds, category_names, title='Confusion Matrix Test Data')
 
     test_single_sample(model, device)
 
-    test_scraped_data()
+    accuracy_on_scrape_data = test_scraped_data()
 
     # Optionally, plot the learning curve
     plt.figure(figsize=(12, 6))
@@ -469,8 +491,8 @@ def main():
     try:
         with open('./results/best_accuracy_log.txt', 'a') as f:
             current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            f.write(f"{current_time} - Best accuracy: {(best_accuracy * 100):.2f}% in fold {best_fold}. Test accuracy: {(test_accuracy * 100):.2f}%. Time taken: {((time.time() - start_time) / 60 ):.2f} minutes, using device: {device}\n")
-            print(f"Best accuracy logged to file")
+            f.write(f"{current_time} - Best accuracy: {(best_accuracy * 100):.2f}% in fold {best_fold}. Test accuracy: {(test_accuracy * 100):.2f}%. Scrape data accuracy: {accuracy_on_scrape_data}. Time taken: {((time.time() - start_time) / 60 ):.2f} minutes, using device: {device}\n")
+            print(f"Logged to file")
     except Exception as e:
         print(f"Error writing to log file: {e}")
 
