@@ -15,3 +15,11 @@
 2024-04-16 18:55:42 - Best accuracy: 100.00% in fold 1. Test accuracy: 99.73%. Time taken: 10851.03 seconds, using device: cuda
 2024-04-17 21:06:15 - Best accuracy: 68.75% in fold 1. Test accuracy: 52.79%. Time taken: 5.97 minutes, using device: cpu
 2024-04-17 21:33:06 - Best accuracy: 50.00% in fold 4. Test accuracy: 25.58%. Time taken: 2.03 minutes, using device: cpu
+2024-04-18 11:06:21 - Best accuracy: 98.25% in fold 4. Test accuracy: 93.33%. Time taken: 809.44 minutes, using device: cpu
+2024-04-18 11:11:58 - Best accuracy: 60.00% in fold 0. Test accuracy: 33.47%. Time taken: 2.21 minutes, using device: cpu
+2024-04-18 11:14:46 - Best accuracy: 50.00% in fold 4. Test accuracy: 31.70%. Time taken: 2.30 minutes, using device: cpu
+2024-04-18 11:42:01 - Best accuracy: 98.00% in fold 0. Test accuracy: 80.27%. Time taken: 5.59 minutes, using device: cpu
+2024-04-18 11:50:47 - Best accuracy: 94.50% in fold 3. Test accuracy: 86.80%. Time taken: 7.10 minutes, using device: cpu
+2024-04-18 11:59:31 - Best accuracy: 97.50% in fold 0. Test accuracy: 86.67%. Time taken: 6.09 minutes, using device: cpu
+2024-04-18 12:26:24 - Best accuracy: 99.19% in fold 1. Test accuracy: 74.83%. Time taken: 26.09 minutes, using device: cpu
+2024-04-18 15:00:19 - Best accuracy: 97.04% in fold 1. Test accuracy: 97.69%. Time taken: 150.58 minutes, using device: cpu
