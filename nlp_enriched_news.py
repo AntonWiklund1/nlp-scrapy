@@ -116,7 +116,9 @@ def pre_process_data(df):
     # Lemmatization
     lemmatizer = WordNetLemmatizer()
     df['body'] = df['body'].apply(lambda x: ' '.join([lemmatizer.lemmatize(word) for word in x.split()]))
-    
+
+    df['body'] = df['body'].apply(lambda x: re.sub(r'\s+', ' ', x))
+
     return df
 
 def compute_similarity_and_keyword(text, keyword_embeddings, keywords):
