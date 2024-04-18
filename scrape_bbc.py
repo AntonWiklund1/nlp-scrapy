@@ -106,6 +106,10 @@ for category in tqdm(categories, desc="Scraping categories"):
     # Rename specific categories to 'politics'
     if category in ['news/topics/c2vdnvdg6xxt', 'news/war-in-ukraine']:
         category_label = 'politics'
+    elif category == 'innovation':
+        category_label = 'tech'
+    elif category == 'culture':
+        category_label = 'entertainment'
     else:
         category_label = category
     
