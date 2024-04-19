@@ -71,7 +71,7 @@ def scrape_detailed_page(driver, url, category):
         "body": body_text if body_text else "No body found",
         "time": time_elem.text.strip() if time_elem else "No time found",
         "url": url,
-        "category": category
+        "Category": category
     }
 
 
@@ -123,7 +123,7 @@ driver.quit()
 filtered_articles = [article for article in articles if article['body'] != "No body found" and article['time'] != "No time found"]
 
 with open("./data/processed/bbc_articles.csv", "w", newline='', encoding='utf-8') as file:
-    writer = csv.DictWriter(file, fieldnames=["id", "url", "headline", "body", "time", "category"])
+    writer = csv.DictWriter(file, fieldnames=["id", "url", "headline", "body", "time", "Category"])
     writer.writeheader()
     for i, article in enumerate(filtered_articles, 1):
         writer.writerow({"id": i, **article})
