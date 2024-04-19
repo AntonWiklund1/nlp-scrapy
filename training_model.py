@@ -20,22 +20,25 @@ from warnings import filterwarnings
 filterwarnings('ignore')
 from datetime import datetime
 import time
-
 import nltk
-
+#nltk.download('stopwords')
+#nltk.download('wordnet')
 import re
-
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
-
 from tqdm.auto import tqdm
-
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support
-
-
 from sklearn.metrics import confusion_matrix
 import seaborn as sns
 import matplotlib.pyplot as plt
+from transformers import RobertaTokenizer
+
+import os
+os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
+
+
+#set manuel seed
+torch.manual_seed(42)
 
 def plot_confusion_matrix(actuals, predictions, classes, title='Confusion Matrix'):
     cm = confusion_matrix(actuals, predictions)
@@ -49,8 +52,11 @@ def plot_confusion_matrix(actuals, predictions, classes, title='Confusion Matrix
 # nltk.download('stopwords')
 # nltk.download('wordnet')
 
+tokenizer = RobertaTokenizer.from_pretrained('roberta-base')
+def bpe_tokenizer(text):
+    return tokenizer.tokenize(text)
 
-def yield_tokens(data_iter, tokenizer):
+def yield_tokens(data_iter, tokenizer=bpe_tokenizer):
     for text in data_iter:
         yield tokenizer(text)
 
@@ -81,58 +87,83 @@ def pre_process_data(df, text='Text'):
 def prepare_data_and_vocab():
 
     train_df = pd.read_csv('./data/bbc_news_train.csv')
-    train_df = train_df.sample(frac=1).reset_index(drop=True)
-    tokenizer = get_tokenizer('basic_english')
+    #drop the rows where category is sport
+    train_df = train_df[train_df['Category'] != 'sport']
+    #train_df = train_df.sample(frac=1).reset_index(drop=True)
+    #tokenizer = get_tokenizer('basic_english')
     
     # Pre-process data
     train_df = pre_process_data(train_df)
     
     # Build vocabulary
-    vocab = build_vocab_from_iterator(yield_tokens(train_df['Text'], tokenizer), specials=["<unk>"])
+    vocab = build_vocab_from_iterator(yield_tokens(train_df['Text']), specials=["<unk>"])
     vocab.set_default_index(vocab["<unk>"])
 
-    #print the length of the vocab
-    print(f"Length of vocab: {len(vocab)}")
 
     with open('vocab.pkl', 'wb') as vocab_file:
         pickle.dump(vocab, vocab_file)
 
-    
     return train_df
 
 
-def text_pipeline(x, vocab):
-    tokenizer = get_tokenizer("basic_english")
-    return [vocab[token] for token in tokenizer(x)]
+def text_pipeline(x):
+    # Adjust this function to truncate and pad the inputs to a fixed length
+    return tokenizer(x, 
+                     padding='max_length',  # Adds padding
+                     truncation=True,       # Truncates
+                     max_length=512,        # Maximum sequence length
+                     return_tensors='pt'    # PyTorch tensors
+                    )['input_ids'].squeeze()  # Ensure it's a single tensor, not a batch
+
+
+vocab_size = tokenizer.vocab_size
+
+class SparseMultiHeadAttentionLayer(nn.Module):
+    def __init__(self, embed_dim, num_heads, window_size=10):
+        super(SparseMultiHeadAttentionLayer, self).__init__()
+        self.multihead_attn = nn.MultiheadAttention(embed_dim=embed_dim, num_heads=num_heads)
+        self.window_size = window_size
+
+    def forward(self, embeddings):
+        batch_size, seq_length, _ = embeddings.size() # (batch_size, seq_length, embed_dim)
+        # Applying windowed attention:
+        # Only allow attention within a window around each token.
+        attn_mask = torch.full((seq_length, seq_length), float('-inf')).to(embeddings.device)
+        for i in range(seq_length):
+            left = max(0, i - self.window_size)
+            right = min(seq_length, i + self.window_size + 1)
+            attn_mask[i, left:right] = 0
+
+        embeddings = embeddings.permute(1, 0, 2)  # permute for nn.MultiheadAttention (seq_len, batch_size, embed_dim)
+        attn_output, attn_output_weights = self.multihead_attn(embeddings, embeddings, embeddings, attn_mask=attn_mask)
+        attn_output = attn_output.permute(1, 0, 2)  # permute back to (batch_size, seq_len, embed_dim)
+        max_pooled_output = torch.max(attn_output, dim=1)[0]
+        return max_pooled_output, attn_output_weights
+
 
 class NewsDataset(Dataset):
-    def __init__(self, texts, labels, vocab):
+    def __init__(self, texts, labels):
         self.texts = texts
         self.labels = labels
-        self.vocab = vocab
     
     def __len__(self):
         return len(self.texts)
     
     def __getitem__(self, idx):
-        text = torch.tensor(text_pipeline(self.texts.iloc[idx], self.vocab), dtype=torch.int64)
+        # Directly use the text_pipeline which now utilizes the tokenizer
+        text = text_pipeline(self.texts.iloc[idx])
         label = torch.tensor(self.labels.iloc[idx], dtype=torch.int64)
         return text, label
 
 def collate_batch(batch):
     label_list, text_list = [], []
     for _text, _label in batch:
-        # Ensure text is not empty
-        if len(_text) > 0:
-            text_list.append(_text)
-            label_list.append(_label)
-    # Safety check for empty batch or text_list
-    if len(text_list) == 0:
-        raise ValueError("No valid text found in batch to pad.")
-    # Padding text sequences
-    text_list = pad_sequence(text_list, batch_first=True, padding_value=0)
+        text_list.append(_text)
+        label_list.append(_label)
+    text_list = pad_sequence(text_list, batch_first=True, padding_value=tokenizer.pad_token_id)  # Pad using tokenizer's pad token
     label_list = torch.tensor(label_list, dtype=torch.int64)
     return text_list, label_list
+
 
 class MultiHeadAttentionLayer(nn.Module):
     def __init__(self, embed_dim, num_heads):
@@ -145,28 +176,12 @@ class MultiHeadAttentionLayer(nn.Module):
         attn_output = attn_output.permute(1, 0, 2)
         max_pooled_output = torch.max(attn_output, dim=1)[0]  # Use max pooling along the sequence dimension
         return max_pooled_output, attn_output_weights
-    
-class Attention(nn.Module):
-    """A simple attention layer. This can be used to compute attention weights and apply them to the input embeddings."""
-    #later we can test multihead attention and other attention mechanisms
-    def __init__(self, embed_dim, hidden_dim):
-        super(Attention, self).__init__()
-        self.attention = nn.Linear(embed_dim, hidden_dim)
-        self.context_vector = nn.Linear(hidden_dim, 1, bias=False)
 
-    def forward(self, embeddings):
-        # embeddings shape: (batch_size, seq_len, embed_dim)
-        attention_weights = self.context_vector(torch.tanh(self.attention(embeddings)))
-        attention_weights = torch.softmax(attention_weights.squeeze(2), dim=1)
-
-        # Create an attention-applied context vector
-        context_vector = torch.sum(embeddings * attention_weights.unsqueeze(2), dim=1)
-        return context_vector, attention_weights
 
 # Define the modelclass TextClassifier(nn.Module):
 class TextClassifier(nn.Module):
     """A text classifier model with an attention mechanism and multiple hidden layers."""
-    def __init__(self, vocab_size, embed_dim, num_class, num_heads = 4):
+    def __init__(self, vocab_size, embed_dim, num_class, num_heads = 4, window_size=10):
         super(TextClassifier, self).__init__()
         self.embedding = nn.Embedding(vocab_size, embed_dim)  # Embedding layer
         self.dropout = nn.Dropout(0.6)  # First dropout layer
@@ -176,12 +191,13 @@ class TextClassifier(nn.Module):
         print(f"Total Weights in Embedding Matrix: {vocab_size * embed_dim:,}")
 
         # MultiHead Attention Layer
-        self.attention = MultiHeadAttentionLayer(embed_dim, num_heads)
-        #self.attention = Attention(embed_dim, 256)
+        #self.attention = MultiHeadAttentionLayer(embed_dim, num_heads)
+        self.attention = SparseMultiHeadAttentionLayer(embed_dim, num_heads, window_size)
+
         # Additional hidden layers
-        self.fc1 = nn.Linear(embed_dim, 256)  # First hidden layer
-        self.fc2 = nn.Linear(256, 128)  # Second hidden layerr
-        self.fc3 = nn.Linear(128, num_class)  # Output layer
+        self.fc1 = nn.Linear(embed_dim, 512)  # First hidden layer
+        self.fc2 = nn.Linear(512, 256)  # Second hidden layerr
+        self.fc3 = nn.Linear(256, num_class)  # Output layer
 
     def forward(self, text):
         # Embedding and initial dropout
@@ -236,17 +252,14 @@ def evaluate(dataloader, model, loss_fn, device):
 def test(model,device):
     """Test the model on the test set and print the accuracy."""
     test_df = pd.read_csv('./data/bbc_news_tests.csv')
-
+    test_df = test_df[test_df['Category'] != 'sport']
     test_df = pre_process_data(test_df, text='Text')
-
-    with open('vocab.pkl', 'rb') as vocab_file:
-        vocab = pickle.load(vocab_file)
 
     with open('category_to_int.pkl', 'rb') as handle:
         category_to_int = pickle.load(handle)
 
     test_df['Category'] = test_df['Category'].map(category_to_int)
-    test_dataset = NewsDataset(test_df['Text'].reset_index(drop=True), test_df['Category'].reset_index(drop=True), vocab)
+    test_dataset = NewsDataset(test_df['Text'].reset_index(drop=True), test_df['Category'].reset_index(drop=True))
     test_loader = DataLoader(test_dataset, batch_size=constants.batch_size, collate_fn=collate_batch)
 
     model.eval()
@@ -271,17 +284,15 @@ def test_single_sample(model, device):
     model.eval()  # Set the model to evaluation mode
 
     test_df = pd.read_csv('./data/bbc_news_tests.csv')
+    test_df = test_df[test_df['Category'] != 'sport']
     test_df = pre_process_data(test_df)
-
-    with open('vocab.pkl', 'rb') as vocab_file:
-        vocab = pickle.load(vocab_file)
 
     with open('category_to_int.pkl', 'rb') as handle:
         category_to_int = pickle.load(handle)
 
 
     test_df['Category'] = test_df['Category'].map(category_to_int)
-    dataset = NewsDataset(test_df['Text'].reset_index(drop=True), test_df['Category'].reset_index(drop=True), vocab)
+    dataset = NewsDataset(test_df['Text'].reset_index(drop=True), test_df['Category'].reset_index(drop=True))
 
     with torch.no_grad():
         for i in range(min(len(dataset), 5)):  # Test with 5 samples
@@ -295,21 +306,18 @@ def test_single_sample(model, device):
 
 def test_scraped_data():
 
-    with open('vocab.pkl', 'rb') as vocab_file:
-        vocab = pickle.load(vocab_file)
-
     with open('category_to_int.pkl', 'rb') as handle:
         category_to_int = pickle.load(handle)
 
     int_to_category = {index: category for category, index in category_to_int.items()}
 
 
-    model = TextClassifier(len(vocab), constants.emded_dim, constants.num_class)
+    model = TextClassifier(vocab_size, constants.emded_dim, constants.num_class)
     model.load_state_dict(torch.load("./models/topic_classifier.pth", map_location=torch.device('cpu')))
     model.eval()  # Set the model to evaluation mode
 
     # Load the data and keywords
-    df = pd.read_csv('./data/processed/bbc_articles.csv')
+    df = pd.read_csv('./data/scraped/bbc_articles.csv')
 
     # Pre-process data
     df = pre_process_data(df, text='body')
@@ -318,7 +326,7 @@ def test_scraped_data():
     results = []
     
     for text in tqdm(df['body'], desc="Predicting categories", total=df.shape[0]):
-        text_tensor = torch.tensor(text_pipeline(text, vocab), dtype=torch.int64).unsqueeze(0)  # Add batch dimension
+        text_tensor = torch.tensor(text_pipeline(text), dtype=torch.int64).unsqueeze(0)  # Add batch dimension
         with torch.no_grad():
             probabilities = torch.softmax(model(text_tensor), dim=1)
             max_prob, predicted_category = torch.max(probabilities, dim=1)
@@ -331,8 +339,8 @@ def test_scraped_data():
     # Sort by confidence in descending order and select the top 300
     df = df.sort_values(by='confidence', ascending=False).head(300)
     
-    actual_categories = df['category'].tolist()  # Fill None with 'Unknown'
-    predicted_categories = df['predicted_category'].tolist()  # Fill None with 'Unknown'
+    actual_categories = df['Category'].tolist()  
+    predicted_categories = df['predicted_category'].tolist()  
 
     # Check if there are any None values left
     print("Actual categories contain None:", None in actual_categories)
@@ -363,9 +371,6 @@ def main():
     # Load data and prepare vocab
     train_df = prepare_data_and_vocab()
 
-    with open('vocab.pkl', 'rb') as vocab_file:
-        vocab = pickle.load(vocab_file)
-
     # Convert categories to integer labels
     unique_categories = train_df['Category'].unique()
     category_to_int = {category: index for index, category in enumerate(unique_categories)}
@@ -376,7 +381,7 @@ def main():
 
     # Prepare the full dataset
     full_dataset = NewsDataset(train_df['Text'].reset_index(drop=True), 
-                               train_df['Category'].reset_index(drop=True), vocab)
+                               train_df['Category'].reset_index(drop=True))
 
     # K-Fold Cross-Validation
     kfold = KFold(n_splits=5, shuffle=True, random_state=42)
@@ -386,8 +391,6 @@ def main():
     best_val_loss_global = float('inf')
     best_model_state_global = None
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-
 
     print(f"Using device: {device}")
 
@@ -410,7 +413,8 @@ def main():
         val_loader = DataLoader(full_dataset, batch_size=constants.batch_size, sampler=val_subsampler, collate_fn=collate_batch)
         
         # Define the model, loss function, and optimizer
-        model = TextClassifier(len(vocab), constants.emded_dim, constants.num_class)
+
+        model = TextClassifier(vocab_size, constants.emded_dim, constants.num_class)
         model.to(device)
         loss_fn = nn.CrossEntropyLoss()
         optimizer = AdamW(model.parameters(), lr=3e-4, weight_decay=1e-2)
@@ -463,7 +467,7 @@ def main():
 
 
     # Test the best model
-    model = TextClassifier(len(vocab), constants.emded_dim, constants.num_class)
+    model = TextClassifier(vocab_size, constants.emded_dim, constants.num_class)
     model.load_state_dict(best_model_state_global)
     model.to(device)
     test_accuracy, all_preds, all_labels = test(model, device)
