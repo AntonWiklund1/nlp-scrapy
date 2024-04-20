@@ -31,3 +31,15 @@
 2024-04-19 18:14:23 - Best accuracy: 93.00% in fold 3. Test accuracy: 91.43%. Scrape data accuracy: 0.6366666666666667. Time taken: 13.58 minutes, using device: cuda
 2024-04-19 19:07:30 - Best accuracy: 92.00% in fold 2. Test accuracy: 92.11%. Scrape data accuracy: 0.5533333333333333. Time taken: 12.11 minutes, using device: cuda # 16 batch size
 2024-04-19 19:47:39 - Best accuracy: 97.07% in fold 2. Test accuracy: 98.07%. Scrape data accuracy: 0.6166666666666667. Time taken: 38.11 minutes, using device: cuda
+2024-04-20 11:31:21 - Best accuracy: 97.17% in fold 2. Test accuracy: 97.72%. Scrape data accuracy: 0.5833333333333334. Time taken: 24.89 minutes, using device: cuda
+--------testing-----------
+2024-04-20 11:34:59 - Best accuracy: 74.19% in fold 0. Test accuracy: 26.667%. Scrape data accuracy: 0.42. Time taken: 2.23 minutes, using device: cuda
+2024-04-20 11:38:08 - Best accuracy: 74.19% in fold 0. Test accuracy: 26.667%. Scrape data accuracy: 0.42. Time taken: 2.18 minutes, using device: cuda
+2024-04-20 11:40:33 - Best accuracy: 74.19% in fold 0. Test accuracy: 26.667%. Scrape data accuracy: 0.42. Time taken: 2.07 minutes, using device: cuda
+----random seed works!----
+2024-04-20 12:06:16 - Best accuracy: 97.17% in fold 2. Test accuracy: 97.719%. Scrape data accuracy: 0.58. Time taken: 24.29 minutes, using device: cuda
+2024-04-20 12:51:01 - Best accuracy: 98.26% in fold 1. Test accuracy: 99.123%. Scrape data accuracy: 0.66. Time taken: 44.20 minutes, using device: cuda #with sparse multi head
+2024-04-20 19:56:42 - Best accuracy: 98.26% in fold 1. Test accuracy: 99.123%. Scrape data accuracy: 0.66. Time taken: 49.38 minutes, using device: cuda
+2024-04-20 21:47:56 - Best accuracy: 98.26% in fold 2. Test accuracy: 99.123%. Scrape data accuracy: 0.51. Time taken: 59.51 minutes, using device: cuda # no scheduler
+2024-04-20 22:39:34 - Best accuracy: 98.70% in fold 1. Test accuracy: 98.947%. Scrape data accuracy: 0.51. Time taken: 46.71 minutes, using device: cuda # scheduler and 15 window size
+2024-04-20 23:31:49 - Best accuracy: 98.26% in fold 1. Test accuracy: 99.123%. Scrape data accuracy: 0.66. Time taken: 45.90 minutes, using device: cuda
