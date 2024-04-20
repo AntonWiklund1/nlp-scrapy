@@ -181,14 +181,10 @@ class MultiHeadAttentionLayer(nn.Module):
 # Define the modelclass TextClassifier(nn.Module):
 class TextClassifier(nn.Module):
     """A text classifier model with an attention mechanism and multiple hidden layers."""
-    def __init__(self, vocab_size, embed_dim, num_class, num_heads = 4, window_size=10):
+    def __init__(self, vocab_size, embed_dim, num_class, num_heads = 8, window_size=10):
         super(TextClassifier, self).__init__()
         self.embedding = nn.Embedding(vocab_size, embed_dim)  # Embedding layer
         self.dropout = nn.Dropout(0.6)  # First dropout layer
-        
-        print(f"Vocabulary Size: {vocab_size}")
-        print(f"Embedding Dimension: {embed_dim}")
-        print(f"Total Weights in Embedding Matrix: {vocab_size * embed_dim:,}")
 
         # MultiHead Attention Layer
         #self.attention = MultiHeadAttentionLayer(embed_dim, num_heads)
@@ -197,7 +193,8 @@ class TextClassifier(nn.Module):
         # Additional hidden layers
         self.fc1 = nn.Linear(embed_dim, 512)  # First hidden layer
         self.fc2 = nn.Linear(512, 256)  # Second hidden layerr
-        self.fc3 = nn.Linear(256, num_class)  # Output layer
+        self.fc3 = nn.Linear(256, 128)  # Third hidden layer
+        self.fc4 = nn.Linear(128, num_class)  # Output layer
 
     def forward(self, text):
         # Embedding and initial dropout
@@ -211,7 +208,8 @@ class TextClassifier(nn.Module):
         # Passing through the hidden layers with activation functions and dropout
         hidden1 = F.leaky_relu(self.fc1(context_vector))
         hidden2 = F.leaky_relu(self.fc2(hidden1))
-        output = self.fc3(hidden2)
+        hidden3 = F.leaky_relu(self.fc3(hidden2))
+        output = self.fc4(hidden3)
 
         return output
 
@@ -279,30 +277,6 @@ def test(model,device):
     accuracy = total_acc / total_count
     print(f'Test Accuracy: {(accuracy * 100):>0.1f}%')
     return accuracy, all_preds, all_labels
-
-def test_single_sample(model, device):
-    model.eval()  # Set the model to evaluation mode
-
-    test_df = pd.read_csv('./data/bbc_news_tests.csv')
-    test_df = test_df[test_df['Category'] != 'sport']
-    test_df = pre_process_data(test_df)
-
-    with open('category_to_int.pkl', 'rb') as handle:
-        category_to_int = pickle.load(handle)
-
-
-    test_df['Category'] = test_df['Category'].map(category_to_int)
-    dataset = NewsDataset(test_df['Text'].reset_index(drop=True), test_df['Category'].reset_index(drop=True))
-
-    with torch.no_grad():
-        for i in range(min(len(dataset), 5)):  # Test with 5 samples
-            sample = dataset[i]
-            text, label = sample
-            text = text.unsqueeze(0).to(device)  # Add batch dimension
-            label = label.unsqueeze(0).to(device)
-            output = model(text)
-            prediction = output.argmax(1)
-            print(f"Test Sample {i}: True Label: {label.item()}, Predicted Label: {prediction.item()}")
 
 def test_scraped_data():
 
@@ -476,8 +450,6 @@ def main():
 
     plot_confusion_matrix(all_labels, all_preds, category_names, title='Confusion Matrix Test Data')
 
-    test_single_sample(model, device)
-
     accuracy_on_scrape_data = test_scraped_data()
 
     # Optionally, plot the learning curve
@@ -489,13 +461,11 @@ def main():
     plt.title('Learning Curve')
     plt.legend()
     plt.savefig('./results/learning_curve.png')
-    plt.show()
-
 
     try:
         with open('./results/best_accuracy_log.txt', 'a') as f:
             current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            f.write(f"{current_time} - Best accuracy: {(best_accuracy * 100):.2f}% in fold {best_fold}. Test accuracy: {(test_accuracy * 100):.2f}%. Scrape data accuracy: {accuracy_on_scrape_data}. Time taken: {((time.time() - start_time) / 60 ):.2f} minutes, using device: {device}\n")
+            f.write(f"{current_time} - Best accuracy: {(best_accuracy * 100):.2f}% in fold {best_fold}. Test accuracy: {(test_accuracy * 100):.3f}%. Scrape data accuracy: {accuracy_on_scrape_data:.2f}. Time taken: {((time.time() - start_time) / 60 ):.2f} minutes, using device: {device}\n")
             print(f"Logged to file")
     except Exception as e:
         print(f"Error writing to log file: {e}")
