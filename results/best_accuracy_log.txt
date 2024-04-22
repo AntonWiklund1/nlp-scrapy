@@ -43,3 +43,29 @@
 2024-04-20 21:47:56 - Best accuracy: 98.26% in fold 2. Test accuracy: 99.123%. Scrape data accuracy: 0.51. Time taken: 59.51 minutes, using device: cuda # no scheduler
 2024-04-20 22:39:34 - Best accuracy: 98.70% in fold 1. Test accuracy: 98.947%. Scrape data accuracy: 0.51. Time taken: 46.71 minutes, using device: cuda # scheduler and 15 window size
 2024-04-20 23:31:49 - Best accuracy: 98.26% in fold 1. Test accuracy: 99.123%. Scrape data accuracy: 0.66. Time taken: 45.90 minutes, using device: cuda
+2024-04-21 13:17:19 - Best accuracy: 96.85% in fold 2. Test accuracy: 98.947%. Scrape data accuracy: 0.66. Time taken: 36.64 minutes, using device: cuda # added one more layer
+2024-04-21 13:39:47 - Best accuracy: 97.93% in fold 2. Test accuracy: 98.596%. Scrape data accuracy: 0.60. Time taken: 21.91 minutes, using device: cuda # no lemmetizer
+2024-04-21 14:52:05 - Best accuracy: 98.26% in fold 2. Test accuracy: 98.070%. Scrape data accuracy: 0.60. Time taken: 68.70 minutes, using device: cuda 
+2024-04-21 14:55:47 - Best accuracy: 51.90% in fold 0. Test accuracy: 20.702%. Scrape data accuracy: 0.32. Time taken: 2.02 minutes, using device: cuda
+2024-04-21 16:40:32 - Best accuracy: 98.05% in fold 1. Test accuracy: 98.947%. Scrape data accuracy: 0.65. Time taken: 41.45 minutes, using device: cuda
+----testing with 500 rows------
+2024-04-21 16:45:01 - Best accuracy: 81.01% in fold 2. Test accuracy: 26.140%. Scrape data accuracy: 0.50. Time taken: 3.15 minutes, using device: cuda
+2024-04-21 16:48:56 - Best accuracy: 81.01% in fold 2. Test accuracy: 26.140%. Scrape data accuracy: 0.50. Time taken: 3.13 minutes, using device: cuda
+2024-04-21 16:52:41 - Best accuracy: 81.01% in fold 2. Test accuracy: 26.140%. Scrape data accuracy: 0.50. Time taken: 3.12 minutes, using device: cuda
+2024-04-21 17:18:39 - Best accuracy: 50.63% in fold 2. Test accuracy: 20.702%. Scrape data accuracy: 0.32. Time taken: 2.20 minutes, using device: cuda #window size 7
+2024-04-21 17:21:54 - Best accuracy: 55.70% in fold 1. Test accuracy: 31.228%. Scrape data accuracy: 0.37. Time taken: 2.49 minutes, using device: cuda # windwo size 13
+2024-04-21 17:25:32 - Best accuracy: 81.01% in fold 2. Test accuracy: 26.140%. Scrape data accuracy: 0.50. Time taken: 3.20 minutes, using device: cuda # window size 10
+2024-04-21 17:32:39 - Best accuracy: 94.94% in fold 1. Test accuracy: 25.439%. Scrape data accuracy: 0.27. Time taken: 6.36 minutes, using device: cuda # 256*2 embed dim
+2024-04-21 18:25:37 - Best accuracy: 98.04% in fold 3. Test accuracy: 98.596%. Scrape data accuracy: 0.60. Time taken: 38.16 minutes, using device: cuda
+2024-04-22 13:12:54 - Best accuracy: 99.78% in fold 1. Test accuracy: 99.649%. Scrape data accuracy: 0.50. Time taken: 116.97 minutes, using device: cuda
+2024-04-22 15:52:31 - Best accuracy: 100.00% in fold 1. Test accuracy: 100.000%. Scrape data accuracy: 0.46. Time taken: 140.50 minutes, using device: cuda
+2024-04-22 16:37:06 - Best accuracy: 91.37% in fold 4. Test accuracy: 32.105%. Scrape data accuracy: 0.36. Time taken: 5.14 minutes, using device: cuda
+
+-----refractoring to modular----
+2024-04-22 - Best Validation Loss: 0.026426, Best Validation Accuracy: 97.87%, Total time taken: 6.99 minutes
+2024-04-22 - Best Validation Loss: 0.898115, Best Validation Accuracy: 47.87%, Test accuracy: 0.21578947368421053, Total time taken: 2.00 minutes
+
+2024-04-22 - Best Validation Loss: 0.379204, Best Validation Accuracy: 87.23%, Test accuracy: 0.21052631578947367, Total time taken: 3.45 minutes
+2024-04-22 - Best Validation Loss: 0.490244, Best Validation Accuracy: 77.66%, Test accuracy: 0.20701754385964913, Total time taken: 3.73 minutes
+2024-04-22 - Best Validation Loss: 0.429264, Best Validation Accuracy: 72.34%, Test accuracy: 0.21403508771929824, Total time taken: 4.21 minutes
+2024-04-22 - Best Validation Loss: 0.779124, Best Validation Accuracy: 61.70%, Test accuracy: 0.21403508771929824, Total time taken: 2.72 minutes
