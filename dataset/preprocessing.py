@@ -10,39 +10,70 @@ from torch.nn.utils.rnn import pad_sequence
 
 
 tokenizer = RobertaTokenizer.from_pretrained('roberta-base')
+torch.manual_seed(42)
 
 def get_vocab_size():
     return tokenizer.vocab_size
 
 
-def prepare_data(file_path, text, augment=True, rows=None):
+def prepare_data(file_path, text, augment=True, rows=None, categories=None, stratified_sampling = False):
 
-    if rows:
-        df = pd.read_csv(f'{file_path}')[:rows]
-    else:
-        df = pd.read_csv(f'{file_path}')
+    # Load the data
+    df = pd.read_csv(file_path)
 
     df = df[df['Category'] != 'sport']
     #df = df.sample(frac=1).reset_index(drop=True)
 
-    #convert the category to int
-    categories = df['Category'].unique()
-    category_to_int = {category: i for i, category in enumerate(categories)}
-
-    with open('./category_to_int.pkl', 'wb') as handle:
-        pickle.dump(category_to_int, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    if rows:
+        df = df.head(rows)
     
+    if categories:
+        #convert the category to int
+        categories = df['Category'].unique()
+        category_to_int = {category: i for i, category in enumerate(categories)}
+
+        with open('./category_to_int.pkl', 'wb') as handle:
+            pickle.dump(category_to_int, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+    if stratified_sampling:
+        balanced_subsets = []
+
+        for category in df['Category'].unique():
+            category_subset = df[df['Category'] == category]
+
+            # Sample 75 rows from each category, with or without replacement depending on the count
+            if len(category_subset) < 75:
+                sampled_subset = category_subset.sample(75, replace=True)  # Oversampling if less than 75 rows
+            else:
+                sampled_subset = category_subset.sample(75, random_state=42)  # Sample 75 rows without replacement
+
+            balanced_subsets.append(sampled_subset)
+
+        # Concatenate all the balanced subsets to form a new DataFrame
+        df = pd.concat(balanced_subsets, ignore_index=True)
+        df = df.sample(frac=1).reset_index(drop=True)  # Shuffle the resulting DataFrame
+
+    with open('./category_to_int.pkl', 'rb') as handle:
+        category_to_int = pickle.load(handle)
+
     df['Category'] = df['Category'].map(category_to_int)
     # Pre-process data
     df = preprocess_data(df, text=text)
 
     if augment:
-        augmenter = naw.SynonymAug(aug_src='wordnet', aug_p=0.1)  # 10% probability of synonym replacement
-        augmented_texts = augment_text(df, augmenter, num_augments=2)  # Each text is augmented twice
-        augmented_df = pd.DataFrame({'Text': augmented_texts, 'Category': df['Category'].repeat(2)})  # Repeat labels for augmented texts
-        df = pd.concat([df, augmented_df]).sample(frac=1).reset_index(drop=True)  # Shuffle the dataset
+        augmenters = [
+            naw.SynonymAug(aug_src='wordnet', aug_p=0.1),
+            #naw.RandomWordAug(action="insert"),
+            naw.RandomWordAug(action="delete"),
+            naw.RandomWordAug(action="swap")
+        ]
+        augmented_texts = augment_text(df, augmenters, num_augments=1)
+        augmented_df = pd.DataFrame({'Text': augmented_texts, 'Category': df['Category']})
+        df = augmented_df
+
 
     return df
+
 
 def bpe_tokenizer(text):
     return tokenizer.tokenize(text)
@@ -51,11 +82,15 @@ def yield_tokens(data_iter, tokenizer=bpe_tokenizer):
     for text in data_iter:
         yield tokenizer(text)
 
-def augment_text(dataframe, augmenter, num_augments=1):
+def augment_text(dataframe, augmenters, num_augments=1):
     augmented_texts = []
     for text in dataframe['Text']:
-        augmented_texts.extend(augmenter.augment(text, n=num_augments))
+        augmented_text = text
+        for augmenter in augmenters:
+            augmented_text = augmenter.augment(augmented_text, n=num_augments)
+        augmented_texts.append(augmented_text)
     return augmented_texts
+
 
 
 def preprocess_data(df, text):
@@ -79,8 +114,8 @@ def preprocess_data(df, text):
     df[f'{text}'] = df[f'{text}'].apply(lambda x: re.sub(r'\s+', ' ', x))
 
 
-    #exprot the preprocessed data
-    df.to_csv('./data/temp/pre_prosseced.csv', index=False)
+    #export the preprocessed data
+    df.to_csv('./data/temp/pre_processed.csv', index=False)
     
     return df
 
@@ -102,3 +137,9 @@ def collate_batch(batch):
     text_list = pad_sequence(text_list, batch_first=True, padding_value=tokenizer.pad_token_id)  # Pad using tokenizer's pad token
     label_list = torch.tensor(label_list, dtype=torch.int64)
     return text_list, label_list
+
+# Load model directly
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+
+tokenizer = AutoTokenizer.from_pretrained("Helsinki-NLP/opus-mt-en-ru")
+model = AutoModelForSeq2SeqLM.from_pretrained("Helsinki-NLP/opus-mt-en-ru")
