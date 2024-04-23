@@ -1,1 +1,1 @@
-from .plot import plot_confusion_matrix
+from .plot import plot_confusion_matrix, plot_learning_curve
