@@ -11,3 +11,13 @@ def plot_confusion_matrix(actuals, predictions, classes, title='Confusion Matrix
     plt.ylabel('True Labels')
     plt.title(f'{title}')
     plt.savefig(f'{file_name}')
+
+def plot_learning_curve(average_train_losses, average_val_losses, title='Learning Curve', file_name='./results/learning_curve.png'):
+    plt.figure(figsize=(12, 6))
+    plt.plot(average_train_losses, label='Average Training Loss')
+    plt.plot(average_val_losses, label='Average Validation Loss')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.title(f'{title}')
+    plt.legend()
+    plt.savefig(f'{file_name}')
