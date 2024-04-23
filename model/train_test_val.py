@@ -13,8 +13,11 @@ from torch.optim.lr_scheduler import OneCycleLR
 from dataset.news_dataset import NewsDataset
 from dataset.preprocessing import preprocess_data, collate_batch, get_vocab_size
 
+from vissualize.plot import plot_learning_curve
+
 from colorama import Fore, Style, init
 init()  # Initialize colorama for Windows compatibility
+torch.manual_seed(42)
 
 """globbal variables"""
 vocab_size = get_vocab_size()
@@ -43,6 +46,7 @@ def full_training_cycle(train_loader, val_loader, model, loss_fn, optimizer, sch
             loss = loss_fn(pred, y)
             optimizer.zero_grad()
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0) # Clip the gradients to prevent exploding gradients
             optimizer.step()
             total_loss += loss.item() * X.size(0)
             total_count += X.size(0)
@@ -72,7 +76,7 @@ def full_training_cycle(train_loader, val_loader, model, loss_fn, optimizer, sch
                 break
     
     
-    return best_val_loss, val_accuracy, best_global_val_loss, best_global_model
+    return train_losses,best_val_loss,val_losses,val_accuracy, best_global_val_loss, best_global_model
 
 def train(df, device, k_folds, epochs):
     """Perform k-fold cross-validation training on the full dataset."""
@@ -80,6 +84,9 @@ def train(df, device, k_folds, epochs):
     val_loss_and_accuracy = {}
     texts = df['Text'].values
     labels = df['Category'].values
+
+    all_train_losses = []
+    all_val_losses = []
 
     full_dataset = NewsDataset(texts, labels)
     best_global_val_loss = float('inf')
@@ -95,15 +102,13 @@ def train(df, device, k_folds, epochs):
         train_loader = DataLoader(full_dataset, batch_size=constants.batch_size, sampler=train_subsampler, collate_fn=collate_batch)
         val_loader = DataLoader(full_dataset, batch_size=constants.batch_size, sampler=val_subsampler, collate_fn=collate_batch)
 
-        
-
         model = TextClassifier(vocab_size, embed_dim, num_class, num_heads=num_heads, window_size=window_size)  
 
         optimizer = AdamW(model.parameters(), lr=3e-4, weight_decay=1e-2)
         scheduler = OneCycleLR(optimizer, max_lr=1e-2, steps_per_epoch=len(train_loader), epochs=epochs)
         loss_fn = nn.CrossEntropyLoss()
 
-        val_loss, val_accuracy, best_global_val_loss, best_global_model = full_training_cycle(
+        train_losses, best_val_loss, val_losses, val_accuracy, best_global_val_loss, best_global_model = full_training_cycle(
             train_loader=train_loader,
             val_loader=val_loader,
             model=model,
@@ -117,7 +122,17 @@ def train(df, device, k_folds, epochs):
             best_global_val_loss=best_global_val_loss,
             best_global_model=best_global_model
         )
-        val_loss_and_accuracy[val_loss] = val_accuracy
+        val_loss_and_accuracy[best_val_loss] = val_accuracy
+
+        all_train_losses.append(train_losses)
+        all_val_losses.append(val_losses)
+
+    num_epochs = min(len(fold_losses) for fold_losses in all_train_losses)  # Taking the shortest length due to possible early stopping
+    average_train_losses = [sum(fold_losses[i] for fold_losses in all_train_losses) / len(all_train_losses) for i in range(num_epochs)]
+    average_val_losses = [sum(fold_val_losses) / len(all_val_losses) for fold_val_losses in zip(*all_val_losses)]
+
+    # Plot the learning curve
+    plot_learning_curve(average_train_losses, average_val_losses, 'Average Learning Curve', './results/average_learning_curve.png')
 
     best_val_loss = min(val_loss_and_accuracy.keys())
     best_accuracy = val_loss_and_accuracy[best_val_loss]
@@ -143,14 +158,14 @@ def evaluate(dataloader, model, loss_fn, device):
     return accuracy, avg_loss
 
 
-def test(df,device, feature_col='Text', label_col='Category'):
+def test(df, device, model_path, feature_col='Text', label_col='Category'):
     """Test the model on the test set and print the accuracy."""
 
     test_dataset = NewsDataset(df[f'{feature_col}'].reset_index(drop=True), df[f'{label_col}'].reset_index(drop=True))
     test_loader = DataLoader(test_dataset, batch_size=constants.batch_size, collate_fn=collate_batch)
 
     model = TextClassifier(get_vocab_size(), embed_dim, num_class, num_heads=num_heads, window_size=window_size)
-    model.load_state_dict(torch.load('./results/best_model.pth'))
+    model.load_state_dict(torch.load(model_path))
     model = model.to(device)
 
     model.eval()
@@ -184,3 +199,43 @@ def test(df,device, feature_col='Text', label_col='Category'):
 
     return accuracy, pred_categories, label_categories
 
+def fine_tune(df, device, epochs=20, percent_to_train=0.5):
+    """Fine-tune the model on the scraped data."""
+    print(f"{Fore.YELLOW}Fine-tuning the model on {device}...{Style.RESET_ALL}")
+    # Load the model
+    model = TextClassifier(get_vocab_size(), embed_dim, num_class, num_heads=num_heads, window_size=window_size)
+    model.load_state_dict(torch.load('./results/best_model.pth'))
+    model = model.to(device)
+
+    
+    # Split the data to percent_to_train for training
+    df = df.sample(frac=1).reset_index(drop=True) # Shuffle the data
+    train_size = int(percent_to_train * len(df))
+
+    df = df[:train_size]
+
+    fine_tune_dataset = NewsDataset(df['body'].reset_index(drop=True), df['Category'].reset_index(drop=True))
+    fine_tune_loader = DataLoader(fine_tune_dataset, batch_size=constants.batch_size, collate_fn=collate_batch)
+    
+    optimizer = AdamW(model.parameters(), lr=3e-3, weight_decay=1e-2)
+    scheduler = OneCycleLR(optimizer, max_lr=1e-2, steps_per_epoch=len(fine_tune_loader), epochs=epochs)
+    loss_fn = nn.CrossEntropyLoss()
+
+    model.train()
+    total_loss, total_count = 0.0, 0
+    for epoch in range(epochs):
+        for X, y in fine_tune_loader:
+            X, y = X.to(device), y.to(device)
+            pred = model(X)
+            loss = loss_fn(pred, y)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            total_loss += loss.item() * X.size(0)
+            total_count += X.size(0)
+        print(f'Epoch {epoch+1}/{epochs}: Training Loss = {total_loss / total_count:.6f}')
+        scheduler.step() 
+    
+    torch.save(model.state_dict(), './results/fine_tuned_model.pth')
+
+    
