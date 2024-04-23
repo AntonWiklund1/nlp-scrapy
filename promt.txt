@@ -1,0 +1,9 @@
+I am working on a neural network that will train on 4600 from different domains articles and categorize them into 4 categories. 
+
+And then i will use the model to predict the categories on new scrapped articles from BBC.
+
+Currently this is the result i get 
+Best Validation Loss: 0.062059, Best Validation Accuracy: 97.83%, Test accuracy: 98.42, Scraped accuracy 55.67, Fine tunned accuracy 80.67, Total time taken: 45.42 minutes
+
+As you can see i have very bad result on the scraped data before fine tuning (Which i do with the scrapped data)
+This is my "main" python file
