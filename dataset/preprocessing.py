@@ -95,7 +95,6 @@ def augment_text(dataframe, augmenters, num_augments=1):
 
 def preprocess_data(df, text):
     """Pre-process the data."""
-    print("Pre-processing data...")
     # Lowercase conversion
     df[f'{text}'] = df[f'{text}'].apply(lambda x: x.lower())
     
@@ -137,9 +136,3 @@ def collate_batch(batch):
     text_list = pad_sequence(text_list, batch_first=True, padding_value=tokenizer.pad_token_id)  # Pad using tokenizer's pad token
     label_list = torch.tensor(label_list, dtype=torch.int64)
     return text_list, label_list
-
-# Load model directly
-from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
-
-tokenizer = AutoTokenizer.from_pretrained("Helsinki-NLP/opus-mt-en-ru")
-model = AutoModelForSeq2SeqLM.from_pretrained("Helsinki-NLP/opus-mt-en-ru")
