@@ -51,7 +51,7 @@ def prepare_data(file_path, text, augment=True, rows=None, categories=None, stra
 
         # Concatenate all the balanced subsets to form a new DataFrame
         df = pd.concat(balanced_subsets, ignore_index=True)
-        df = df.sample(frac=1).reset_index(drop=True)  # Shuffle the resulting DataFrame
+        df = df.sample(frac=1, random_state=42).reset_index(drop=True)  # Shuffle the resulting DataFrame
 
     with open('./category_to_int.pkl', 'rb') as handle:
         category_to_int = pickle.load(handle)
@@ -94,29 +94,33 @@ def augment_text(dataframe, augmenters, num_augments=1):
 
 
 def preprocess_data(df, text):
-    """Pre-process the data."""
-    # Lowercase conversion
-    df[f'{text}'] = df[f'{text}'].apply(lambda x: x.lower())
-    
-    # Remove links
-    df[f'{text}'] = df[f'{text}'].apply(lambda x: re.sub(r'http\S+', '', x))
-
-    # Remove stopwords
+    """Pre-process the data using optimized methods."""
+    # Precompile Regex and reuse objects
+    regex_links = re.compile(r'http\S+')
+    regex_spaces = re.compile(r'\s+')
     stop_words = set(stopwords.words('english'))
-    df[f'{text}'] = df[f'{text}'].apply(lambda x: ' '.join([word for word in x.split() if word not in stop_words]))
-
-    # Lemmatization
     lemmatizer = WordNetLemmatizer()
-    df[f'{text}'] = df[f'{text}'].apply(lambda x: ' '.join([lemmatizer.lemmatize(word) for word in x.split()]))
+
+    # Lowercase conversion and remove links
+    df[text] = df[text].str.lower().replace(regex_links, '')
+
+    # Remove stopwords and lemmatize in one pass
+    def process_text(text):
+        words = text.split()
+        filtered_words = [word for word in words if word not in stop_words]
+        lemmatized_words = [lemmatizer.lemmatize(word) for word in filtered_words]
+        return ' '.join(lemmatized_words)
+
+    df[text] = df[text].apply(process_text)
 
     # Remove more than one space
-    df[f'{text}'] = df[f'{text}'].apply(lambda x: re.sub(r'\s+', ' ', x))
+    df[text] = df[text].replace(regex_spaces, ' ', regex=True)
 
-
-    #export the preprocessed data
+    # Export the preprocessed data
     df.to_csv('./data/temp/pre_processed.csv', index=False)
-    
+
     return df
+
 
 def text_pipeline(x):
     """bpe tokenizes the input text and returns the input_ids tensor."""
