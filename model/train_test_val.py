@@ -1,4 +1,5 @@
 import pickle
+from matplotlib import pyplot as plt
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -13,7 +14,7 @@ from torch.optim.lr_scheduler import OneCycleLR
 from dataset.news_dataset import NewsDataset
 from dataset.preprocessing import preprocess_data, collate_batch, get_vocab_size
 
-from vissualize.plot import plot_learning_curve
+from vissualize.plot import plot_learning_curve, plot_gradients
 
 from colorama import Fore, Style, init
 init()  # Initialize colorama for Windows compatibility
@@ -35,7 +36,7 @@ def full_training_cycle(train_loader, val_loader, model, loss_fn, optimizer, sch
     best_val_loss = float('inf')
     early_stopping_counter = 0
     train_losses, val_losses = [], []
-    
+
     for epoch in range(epochs):
         model.train()
         total_loss, total_count = 0.0, 0
@@ -49,6 +50,8 @@ def full_training_cycle(train_loader, val_loader, model, loss_fn, optimizer, sch
             optimizer.step()
             total_loss += loss.item() * X.size(0)
             total_count += X.size(0)
+
+        
         train_losses.append(total_loss / total_count)
 
         print(f'\nEpoch {epoch+1}/{epochs} Fold {fold+1}: Training Loss = {train_losses[-1]:.6f}')
@@ -73,8 +76,7 @@ def full_training_cycle(train_loader, val_loader, model, loss_fn, optimizer, sch
             if early_stopping_counter >= early_stopping_patience:
                 print(f"{Fore.RED}Early stopping triggered in fold {fold+1} after {epoch+1} epochs without improvement. Best Validation Loss for this fold: {best_val_loss:.6f}{Style.RESET_ALL}")
                 break
-    
-    
+
     return train_losses,best_val_loss,val_losses,val_accuracy, best_global_val_loss, best_global_model
 
 def train(df, device, k_folds, epochs):
