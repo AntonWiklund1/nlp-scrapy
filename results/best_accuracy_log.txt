@@ -97,3 +97,12 @@
 2024-04-24 - Best Validation Loss: 0.189990, Best Validation Accuracy: 92.93%, Test accuracy: 95.44, Scraped accuracy 50.33, Fine tunned accuracy 74.67, Total time taken: 60.01 minutes
 2024-04-24 - Best Validation Loss: 0.248815, Best Validation Accuracy: 92.21%, Test accuracy: 98.42, Scraped accuracy 71.00, Fine tunned accuracy 86.00, Total time taken: 87.29 minutes 
 ### 1024 max lenght and batch size 32 from 512 and 128
+2024-04-24 - Best Validation Loss: 0.204388, Best Validation Accuracy: 92.28%, Test accuracy: 97.89, Scraped accuracy 68.00, Fine tunned accuracy 75.33, Total time taken: 146.58 minutes
+#### 512 neurons in first hl
+2024-04-25 - Best Validation Loss: 0.259769, Best Validation Accuracy: 91.75%, Test accuracy: 98.77, Scraped accuracy 63.00, Fine tunned accuracy 86.67, Total time taken: 68.06 minutes
+2024-04-25 - Best Validation Loss: 0.238255, Best Validation Accuracy: 90.08%, Test accuracy: 97.37, Scraped accuracy 64.33, Fine tunned accuracy 89.33, Total time taken: 96.04 minutes
+2024-04-25 - Best Validation Loss: 0.772824, Best Validation Accuracy: 57.50%, Test accuracy: 21.58, Scraped accuracy 31.67, Fine tunned accuracy 42.33, Total time taken: 4.05 minutes
+2024-04-25 - Best Validation Loss: 0.885384, Best Validation Accuracy: 47.50%, Test accuracy: 28.77, Scraped accuracy 30.33, Fine tunned accuracy 26.67, Total time taken: 3.99 minutes
+2024-04-25 - Best Validation Loss: 0.752540, Best Validation Accuracy: 62.50%, Test accuracy: 31.93, Scraped accuracy 29.00, Fine tunned accuracy 16.33, Total time taken: 4.33 minutes
+2024-04-25 - Best Validation Loss: 0.958842, Best Validation Accuracy: 62.50%, Test accuracy: 22.28, Scraped accuracy 31.67, Fine tunned accuracy 49.67, Total time taken: 4.20 minutes
+2024-04-25 - Best Validation Loss: 0.237858, Best Validation Accuracy: 92.73%, Test accuracy: 96.67, Scraped accuracy 70.00, Fine tunned accuracy 90.00, Total time taken: 87.53 minutes
