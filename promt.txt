@@ -1,4 +1,4 @@
-I am working on a neural network that will train on 4600 from different domains articles and categorize them into 4 categories. 
+I am working on a neural network that will train on 6600 from different domains articles and categorize them into 4 categories. 
 
 And then i will use the model to predict the categories on new scrapped articles from BBC.
 
