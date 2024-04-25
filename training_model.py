@@ -65,9 +65,9 @@ def main():
 
     # Plot the confusion matrix
     classes = list(category_to_int.keys()) # Get the class names
-    plot_confusion_matrix(test_labels, test_predictions, classes, title='Test Confusion Matrix', file_name='./results/test_confusion_matrix.png') 
-    plot_confusion_matrix(scraped_labels, scraped_predictions, classes, title='Scraped Data Confusion Matrix', file_name='./results/scraped_confusion_matrix.png')
-    plot_confusion_matrix(tuned_labels, tuned_predictions, classes, title='Fine Tuned Data Confusion Matrix', file_name='./results/fine_tuned_confusion_matrix.png')
+    plot_confusion_matrix(test_labels, test_predictions, classes, title='Test Confusion Matrix', file_name='./results/cm/test_confusion_matrix.png') 
+    plot_confusion_matrix(scraped_labels, scraped_predictions, classes, title='Scraped Data Confusion Matrix', file_name='./results/cm/scraped_confusion_matrix.png')
+    plot_confusion_matrix(tuned_labels, tuned_predictions, classes, title='Fine Tuned Data Confusion Matrix', file_name='./results/cm/fine_tuned_confusion_matrix.png')
 
     #Log the results to a file
     with open('./results/best_accuracy_Log.txt', 'a') as f:
