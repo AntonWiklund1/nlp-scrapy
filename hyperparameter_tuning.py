@@ -16,7 +16,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 def objective(trial):
     pruner = MedianPruner()
     # Hyperparameters to be tuned by Optuna
-    lr = trial.suggest_loguniform('lr', 1e-5, 3e-4) # Learning rate first is lower bound and second is upper bound
+    lr = trial.suggest_loguniform('lr', 3e-5, 3e-3) # Learning rate first is lower bound and second is upper bound 0.00001 to 0.0003
     embed_dim = trial.suggest_categorical('embed_dim', [128, 256, 512])
     num_heads = 8 if embed_dim == 128 else trial.suggest_categorical('num_heads', [8, 16])
     dropout_rate = trial.suggest_uniform('dropout_rate', 0.1, 0.5)
@@ -28,7 +28,8 @@ def objective(trial):
     loss_fn = torch.nn.CrossEntropyLoss()
 
     # Prepare the data
-    df = prepare_data("./data/bbc_news_train_2.csv", text='Text', augment=True, categories=True, rows=500)
+    df = prepare_data("./data/bbc_news_train_2.csv", text='Text', augment=True, categories=True, rows=5000)
+    print(df['Category'].value_counts())
     texts = df['Text'].values
     labels = df['Category'].values
     full_dataset = NewsDataset(texts, labels)
@@ -55,6 +56,7 @@ def objective(trial):
                 output = model(texts)
                 loss = loss_fn(output, labels)
                 loss.backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
                 optimizer.step()
             
             # Validation phase
@@ -89,7 +91,7 @@ def objective(trial):
 
 def main():
     study = optuna.create_study(direction='minimize')
-    study.optimize(objective, n_trials=5)
+    study.optimize(objective, n_trials=20)
 
     print("Best trial:")
     trial = study.best_trial
