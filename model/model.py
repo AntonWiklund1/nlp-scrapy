@@ -12,14 +12,14 @@ filterwarnings('ignore')
 torch.manual_seed(42)
 
 class TextClassifier(nn.Module):
-    def __init__(self, vocab_size, embed_dim, num_class, num_heads):
+    def __init__(self, vocab_size, embed_dim, num_class, num_heads, dropout_rate=0.5):
         super(TextClassifier, self).__init__()
         self.embedding = nn.Embedding(vocab_size, embed_dim)
         self.pos_encoder = PositionalEncoding(embed_dim)
 
 
-        self.dropout1 = nn.Dropout(0.5)
-        self.dropout2 = nn.Dropout(0.5)
+        self.dropout1 = nn.Dropout(dropout_rate)
+        self.dropout2 = nn.Dropout(dropout_rate)
 
         self.attention = TransformerBlock(embed_dim, num_heads, dropout=0.6, forward_expansion=4)
         self.attention_pool = AttentionPooling(embed_dim)
