@@ -8,10 +8,20 @@ from nltk.stem import WordNetLemmatizer
 import nlpaug.augmenter.word as naw
 from torch.nn.utils.rnn import pad_sequence
 import constants
+import random
+import numpy as np
 
 
 tokenizer = RobertaTokenizer.from_pretrained('roberta-base')
-torch.manual_seed(42)
+
+def set_seed(seed=42):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)  # if using CUDA
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    pd.set_option('mode.chained_assignment', None)
 
 def get_vocab_size():
     return tokenizer.vocab_size
@@ -19,6 +29,7 @@ def get_vocab_size():
 
 def prepare_data(file_path, text, augment=True, rows=None, categories=None, stratified_sampling=False):
     # Load the data
+    set_seed()
     df = pd.read_csv(file_path)
     df = df[df['Category'] != 'sport']
 
