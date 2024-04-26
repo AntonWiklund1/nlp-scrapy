@@ -1,3 +1,4 @@
+import math
 import pickle
 from matplotlib import pyplot as plt
 import torch
@@ -12,9 +13,9 @@ from torch.optim import AdamW
 from torch.optim.lr_scheduler import OneCycleLR
 
 from dataset.news_dataset import NewsDataset
-from dataset.preprocessing import preprocess_data, collate_batch, get_vocab_size
+from dataset.preprocessing import collate_batch, get_vocab_size
 
-from vissualize.plot import plot_learning_curve, plot_gradients
+from vissualize.plot import plot_learning_curve, plot_gradients, plot_ud_ratios
 
 from colorama import Fore, Style, init
 init()  # Initialize colorama for Windows compatibility
@@ -25,9 +26,10 @@ vocab_size = get_vocab_size()
 embed_dim = constants.embed_dim
 num_class = constants.num_class
 num_heads = constants.num_heads
+lr = constants.lr
 early_stopping_patience = constants.early_stopping_patience
 
-def full_training_cycle(train_loader, val_loader, model, loss_fn, optimizer, scheduler, device, epochs, early_stopping_patience, fold, best_global_val_loss, best_global_model):
+def one_fold_training(train_loader, val_loader, model, loss_fn, optimizer, scheduler, device, epochs, early_stopping_patience, fold, best_global_val_loss, best_global_model, ud_ratio_history):
     """
     Performs one fold of training and validation.
     Returns the validation accuracy of the best model.
@@ -36,6 +38,7 @@ def full_training_cycle(train_loader, val_loader, model, loss_fn, optimizer, sch
     best_val_loss = float('inf')
     early_stopping_counter = 0
     train_losses, val_losses = [], []
+
 
     for epoch in range(epochs):
         model.train()
@@ -46,7 +49,17 @@ def full_training_cycle(train_loader, val_loader, model, loss_fn, optimizer, sch
             loss = loss_fn(pred, y)
             optimizer.zero_grad()
             loss.backward()
+
+            
+            ud_ratios = [
+                math.log10(lr * param.grad.data.norm() / (param.data.norm() + 1e-8))
+                for name, param in model.named_parameters() if param.requires_grad and 'bias' not in name
+            ]
+
+            ud_ratio_history.append(ud_ratios)
+
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0) # Clip the gradients to prevent exploding gradients
+
             optimizer.step()
             total_loss += loss.item() * X.size(0)
             total_count += X.size(0)
@@ -92,6 +105,7 @@ def train(df, device, k_folds, epochs):
     full_dataset = NewsDataset(texts, labels)
     best_global_val_loss = float('inf')
     best_global_model = None
+    ud_ratio_history = []
     
 
     for fold, (train_ids, val_ids) in enumerate(kfold.split(full_dataset)):
@@ -105,11 +119,11 @@ def train(df, device, k_folds, epochs):
 
         model = TextClassifier(vocab_size, embed_dim, num_class, num_heads=num_heads)  
 
-        optimizer = AdamW(model.parameters(), lr=3e-4, weight_decay=1e-2)
+        optimizer = AdamW(model.parameters(), lr=lr, weight_decay=1e-2)
         scheduler = OneCycleLR(optimizer, max_lr=1e-2, steps_per_epoch=len(train_loader), epochs=epochs)
         loss_fn = nn.CrossEntropyLoss()
 
-        train_losses, best_val_loss, val_losses, val_accuracy, best_global_val_loss, best_global_model = full_training_cycle(
+        train_losses, best_val_loss, val_losses, val_accuracy, best_global_val_loss, best_global_model = one_fold_training(
             train_loader=train_loader,
             val_loader=val_loader,
             model=model,
@@ -121,7 +135,8 @@ def train(df, device, k_folds, epochs):
             early_stopping_patience=early_stopping_patience,
             fold=fold,
             best_global_val_loss=best_global_val_loss,
-            best_global_model=best_global_model
+            best_global_model=best_global_model,
+            ud_ratio_history=ud_ratio_history
         )
         val_loss_and_accuracy[best_val_loss] = val_accuracy
 
@@ -134,6 +149,7 @@ def train(df, device, k_folds, epochs):
 
     # Plot the learning curve
     plot_learning_curve(average_train_losses, average_val_losses, 'Average Learning Curve', './results/average_learning_curve.png')
+    plot_ud_ratios(ud_ratio_history, './results/ud_ratios.png')
 
     best_val_loss = min(val_loss_and_accuracy.keys())
     best_accuracy = val_loss_and_accuracy[best_val_loss]
@@ -222,6 +238,8 @@ def fine_tune(df, device, epochs=20, percent_to_train=0.5):
     scheduler = OneCycleLR(optimizer, max_lr=1e-2, steps_per_epoch=len(fine_tune_loader), epochs=epochs)
     loss_fn = nn.CrossEntropyLoss()
 
+    best_loss = float('inf')
+
     model.train()
     total_loss, total_count = 0.0, 0
     for epoch in range(epochs):
@@ -234,9 +252,12 @@ def fine_tune(df, device, epochs=20, percent_to_train=0.5):
             optimizer.step()
             total_loss += loss.item() * X.size(0)
             total_count += X.size(0)
+            if total_loss < best_loss:
+                best_loss = total_loss
+                torch.save(model.state_dict(), './results/fine_tuned_model.pth')
         print(f'Epoch {epoch+1}/{epochs}: Training Loss = {total_loss / total_count:.6f}')
-        scheduler.step() 
+        scheduler.step()
     
-    torch.save(model.state_dict(), './results/fine_tuned_model.pth')
+    
 
     
