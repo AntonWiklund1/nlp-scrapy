@@ -7,6 +7,7 @@ from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 import nlpaug.augmenter.word as naw
 from torch.nn.utils.rnn import pad_sequence
+import constants
 
 
 tokenizer = RobertaTokenizer.from_pretrained('roberta-base')
@@ -16,54 +17,56 @@ def get_vocab_size():
     return tokenizer.vocab_size
 
 
-def prepare_data(file_path, text, augment=True, rows=None, categories=None, stratified_sampling = False):
-
+def prepare_data(file_path, text, augment=True, rows=None, categories=None, stratified_sampling=False):
     # Load the data
     df = pd.read_csv(file_path)
-
     df = df[df['Category'] != 'sport']
-    #df = df.sample(frac=1).reset_index(drop=True)
 
     if rows:
-        df = df.head(rows)
-    
+        # Ensure even distribution of categories if rows is specified
+        num_categories = len(df['Category'].unique())
+        samples_per_category = rows // num_categories
+        subsets = []
+
+        for category in df['Category'].unique():
+            category_subset = df[df['Category'] == category]
+            if len(category_subset) < samples_per_category:
+                sampled_subset = category_subset.sample(samples_per_category, replace=True)
+            else:
+                sampled_subset = category_subset.sample(samples_per_category, random_state=42)
+            subsets.append(sampled_subset)
+
+        df = pd.concat(subsets).sample(frac=1, random_state=42).reset_index(drop=True)
+
     if categories:
-        #convert the category to int
+        # Convert the category to int
         categories = df['Category'].unique()
         category_to_int = {category: i for i, category in enumerate(categories)}
-
         with open('./category_to_int.pkl', 'wb') as handle:
             pickle.dump(category_to_int, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
     if stratified_sampling:
         balanced_subsets = []
-
         for category in df['Category'].unique():
             category_subset = df[df['Category'] == category]
-
-            # Sample 75 rows from each category, with or without replacement depending on the count
             if len(category_subset) < 75:
-                sampled_subset = category_subset.sample(75, replace=True)  # Oversampling if less than 75 rows
+                sampled_subset = category_subset.sample(75, replace=True)
             else:
-                sampled_subset = category_subset.sample(75, random_state=42)  # Sample 75 rows without replacement
-
+                sampled_subset = category_subset.sample(75, random_state=42)
             balanced_subsets.append(sampled_subset)
-
-        # Concatenate all the balanced subsets to form a new DataFrame
         df = pd.concat(balanced_subsets, ignore_index=True)
-        df = df.sample(frac=1, random_state=42).reset_index(drop=True)  # Shuffle the resulting DataFrame
+        df = df.sample(frac=1, random_state=42).reset_index(drop=True)
 
     with open('./category_to_int.pkl', 'rb') as handle:
         category_to_int = pickle.load(handle)
 
+
     df['Category'] = df['Category'].map(category_to_int)
-    # Pre-process data
     df = preprocess_data(df, text=text)
 
     if augment:
         augmenters = [
             naw.SynonymAug(aug_src='wordnet', aug_p=0.1),
-            #naw.RandomWordAug(action="insert"),
             naw.RandomWordAug(action="delete"),
             naw.RandomWordAug(action="swap")
         ]
@@ -71,8 +74,8 @@ def prepare_data(file_path, text, augment=True, rows=None, categories=None, stra
         augmented_df = pd.DataFrame({'Text': augmented_texts, 'Category': df['Category']})
         df = augmented_df
 
-
     return df
+
 
 
 def bpe_tokenizer(text):
@@ -127,7 +130,7 @@ def text_pipeline(x):
     return tokenizer(x, 
                      padding='max_length',  # Adds padding
                      truncation=True,       # Truncates
-                     max_length=512,        # Maximum sequence length
+                     max_length=constants.sequence_length,        # Maximum sequence length
                      return_tensors='pt'    # PyTorch tensors
                     )['input_ids'].squeeze()  # Ensure it's a single tensor, not a batch
 
