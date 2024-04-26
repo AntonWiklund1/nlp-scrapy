@@ -45,17 +45,15 @@ def one_fold_training(train_loader, val_loader, model, loss_fn, optimizer, sched
         total_loss, total_count = 0.0, 0
         for batch, (X, y) in enumerate(train_loader):
             X, y = X.to(device), y.to(device)
+            optimizer.zero_grad()
             pred = model(X)
             loss = loss_fn(pred, y)
-            optimizer.zero_grad()
             loss.backward()
 
-            
             ud_ratios = [
                 math.log10(lr * param.grad.data.norm() / (param.data.norm() + 1e-8))
                 for name, param in model.named_parameters() if param.requires_grad and 'bias' not in name
             ]
-
             ud_ratio_history.append(ud_ratios)
 
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0) # Clip the gradients to prevent exploding gradients
