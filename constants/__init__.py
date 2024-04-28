@@ -6,4 +6,4 @@ early_stopping_patience = 10
 folds = 5
 epochs = 100
 sequence_length = 512
-lr = 3e-4
+lr = 3e-3
