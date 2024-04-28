@@ -33,6 +33,9 @@ def prepare_data(file_path, text, augment=True, rows=None, categories=None, stra
     df = pd.read_csv(file_path)
     df = df[df['Category'] != 'sport']
 
+    #shuffle the data
+    df = df.sample(frac=1, random_state=42).reset_index(drop=True)
+
     if rows:
         # Ensure even distribution of categories if rows is specified
         num_categories = len(df['Category'].unique())
