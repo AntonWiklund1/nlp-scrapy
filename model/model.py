@@ -12,41 +12,53 @@ filterwarnings('ignore')
 torch.manual_seed(42)
 
 class TextClassifier(nn.Module):
-    def __init__(self, vocab_size, embed_dim, num_class, num_heads, dropout_rate=0.5):
+    def __init__(self, vocab_size, embed_dim, num_class, num_heads, dropout_rate=0.5, layer_size=256, number_of_layers=3):
         super(TextClassifier, self).__init__()
         self.embedding = nn.Embedding(vocab_size, embed_dim)
         self.pos_encoder = PositionalEncoding(embed_dim)
-
-
         self.dropout1 = nn.Dropout(dropout_rate)
-        self.dropout2 = nn.Dropout(dropout_rate)
-
         self.attention = TransformerBlock(embed_dim, num_heads, dropout=0.6, forward_expansion=4)
         self.attention_pool = AttentionPooling(embed_dim)
 
-        self.fc1 = nn.Linear(embed_dim, 256) # first fully connected layer
-        self.fc2 = nn.Linear(256, 256) # second fully connected layer
-        self.fc3 = nn.Linear(256, num_class) # output layer
+        # Create a list of fully connected and batch normalization layers based on the number of layers
+        self.linear_layers = nn.ModuleList()
+        self.batch_norms = nn.ModuleList()  # Batch normalization layers
+
+        for i in range(number_of_layers):
+            if i == 0:
+                # First layer takes the output from the attention pooling
+                self.linear_layers.append(nn.Linear(embed_dim, layer_size))
+            else:
+                # Subsequent layers are standard hidden layers
+                self.linear_layers.append(nn.Linear(layer_size, layer_size))
+            # Add batch normalization layer for each linear layer
+            self.batch_norms.append(nn.BatchNorm1d(layer_size))
+        
+        # Output layer
+        self.output_layer = nn.Linear(layer_size, num_class)
+        self.dropout2 = nn.Dropout(dropout_rate)
 
     def forward(self, text):
         embedded = self.embedding(text)
         embedded = self.pos_encoder(embedded)
         embedded = self.dropout1(embedded)
-        embedded = embedded.permute(1, 0, 2)  # Adjusting for MultiheadAttention expectation (L, N, E)
+        embedded = embedded.permute(1, 0, 2)  # Adjusting for MultiheadAttention expectation
 
         context_vector, attn_weights = self.attention(embedded)
-        context_vector = context_vector.permute(1, 0, 2)  # Adjust back (N, L, E)
-        # Apply max pooling over the sequence dimension (L)
+        context_vector = context_vector.permute(1, 0, 2)  # Adjust back
         pooled_output = self.attention_pool(context_vector)
 
-        hidden1 = F.leaky_relu(self.fc1(pooled_output))
-        hidden1 = self.dropout2(hidden1)
-        hidden2 = F.leaky_relu(self.fc2(hidden1))
-        hidden2 = self.dropout2(hidden2)
-        output = self.fc3(hidden2)
-        return output
+        # Apply all linear and batch normalization layers
+        x = pooled_output
+        for layer, norm in zip(self.linear_layers, self.batch_norms):
+            x = layer(x)
+            x = norm(x)  # Apply batch normalization
+            x = F.leaky_relu(x)
+            x = self.dropout2(x)
 
-    
+        # Final output layer
+        output = self.output_layer(x)
+        return output
 
 class TransformerBlock(nn.Module):
     """Transformer Block with MultiheadAttention and Feed Forward Network"""
