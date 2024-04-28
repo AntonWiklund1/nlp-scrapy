@@ -17,6 +17,8 @@ from dataset.preprocessing import collate_batch, get_vocab_size
 
 from vissualize.plot import plot_learning_curve, plot_gradients, plot_ud_ratios
 
+from torch.cuda.amp import autocast, GradScaler
+
 from colorama import Fore, Style, init
 init()  # Initialize colorama for Windows compatibility
 torch.manual_seed(42)
@@ -38,6 +40,7 @@ def one_fold_training(train_loader, val_loader, model, loss_fn, optimizer, sched
     best_val_loss = float('inf')
     early_stopping_counter = 0
     train_losses, val_losses = [], []
+    scaler = GradScaler()
 
 
     for epoch in range(epochs):
@@ -46,19 +49,29 @@ def one_fold_training(train_loader, val_loader, model, loss_fn, optimizer, sched
         for batch, (X, y) in enumerate(train_loader):
             X, y = X.to(device), y.to(device)
             optimizer.zero_grad()
-            pred = model(X)
-            loss = loss_fn(pred, y)
-            loss.backward()
+            with autocast():  # Enable automatic mixed precision
+                pred = model(X)
+                loss = loss_fn(pred, y)
 
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+
+            current_lr = optimizer.param_groups[0]['lr']  # Assuming the same learning rate for all parameters
+
+            # Calculate the update-to-data ratios using Karpathy's method
             ud_ratios = [
-                math.log10(lr * param.grad.data.norm() / (param.data.norm() + 1e-8))
-                for name, param in model.named_parameters() if param.requires_grad and 'bias' not in name
+                ((current_lr * param.grad).std() / (param.data.std() + 1e-8)).log10().item()
+                for name, param in model.named_parameters() if 'bias' not in name and param.requires_grad and param.grad is not None
             ]
+            ud_ratio_history.append(ud_ratios)
+
+            ud_ratio_history.append(ud_ratios)
+
             ud_ratio_history.append(ud_ratios)
 
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0) # Clip the gradients to prevent exploding gradients
 
-            optimizer.step()
             total_loss += loss.item() * X.size(0)
             total_count += X.size(0)
 
@@ -115,7 +128,7 @@ def train(df, device, k_folds, epochs):
         train_loader = DataLoader(full_dataset, batch_size=constants.batch_size, sampler=train_subsampler, collate_fn=collate_batch)
         val_loader = DataLoader(full_dataset, batch_size=constants.batch_size, sampler=val_subsampler, collate_fn=collate_batch)
 
-        model = TextClassifier(vocab_size, embed_dim, num_class, num_heads=num_heads)  
+        model = TextClassifier(vocab_size, embed_dim, num_class, num_heads=num_heads, dropout_rate=0.6, layer_size=256, number_of_layers=3)
 
         optimizer = AdamW(model.parameters(), lr=lr, weight_decay=1e-2)
         scheduler = OneCycleLR(optimizer, max_lr=1e-2, steps_per_epoch=len(train_loader), epochs=epochs)
@@ -179,7 +192,7 @@ def test(df, device, model_path, feature_col='Text', label_col='Category'):
     test_dataset = NewsDataset(df[f'{feature_col}'].reset_index(drop=True), df[f'{label_col}'].reset_index(drop=True))
     test_loader = DataLoader(test_dataset, batch_size=constants.batch_size, collate_fn=collate_batch)
 
-    model = TextClassifier(get_vocab_size(), embed_dim, num_class, num_heads=num_heads)
+    model = TextClassifier(get_vocab_size(), embed_dim, num_class, num_heads=num_heads, dropout_rate=0.6, layer_size=256, number_of_layers=3)
     model.load_state_dict(torch.load(model_path))
     model = model.to(device)
 
@@ -218,7 +231,7 @@ def fine_tune(df, device, epochs=20, percent_to_train=0.5):
     """Fine-tune the model on the scraped data."""
     print(f"{Fore.YELLOW}Fine-tuning the model on {device}...{Style.RESET_ALL}")
     # Load the model
-    model = TextClassifier(get_vocab_size(), embed_dim, num_class, num_heads=num_heads)
+    model = TextClassifier(get_vocab_size(), embed_dim, num_class, num_heads=num_heads, dropout_rate=0.6, layer_size=256, number_of_layers=3)
     model.load_state_dict(torch.load('./results/best_model.pth'))
     model = model.to(device)
 
@@ -232,7 +245,7 @@ def fine_tune(df, device, epochs=20, percent_to_train=0.5):
     fine_tune_dataset = NewsDataset(df['body'].reset_index(drop=True), df['Category'].reset_index(drop=True))
     fine_tune_loader = DataLoader(fine_tune_dataset, batch_size=constants.batch_size, collate_fn=collate_batch)
     
-    optimizer = AdamW(model.parameters(), lr=3e-3, weight_decay=1e-2)
+    optimizer = AdamW(model.parameters(), lr=constants.lr, weight_decay=1e-2)
     scheduler = OneCycleLR(optimizer, max_lr=1e-2, steps_per_epoch=len(fine_tune_loader), epochs=epochs)
     loss_fn = nn.CrossEntropyLoss()
 
