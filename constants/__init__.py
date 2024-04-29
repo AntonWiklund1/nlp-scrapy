@@ -9,4 +9,4 @@ sequence_length = 512
 lr = 1e-2
 layer_size = 256
 dropout_rate = 0.6
-number_of_layers = 3
+number_of_layers = 2
