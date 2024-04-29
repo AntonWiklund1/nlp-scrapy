@@ -27,7 +27,7 @@ def get_vocab_size():
     return tokenizer.vocab_size
 
 
-def prepare_data(file_path, text, augment=True, rows=None, categories=None, stratified_sampling=False):
+def prepare_data(file_path, text, augment=False, rows=None, categories=None, stratified_sampling=False):
     # Load the data
     set_seed()
     df = pd.read_csv(file_path)
@@ -89,8 +89,6 @@ def prepare_data(file_path, text, augment=True, rows=None, categories=None, stra
         df = augmented_df
 
     return df
-
-
 
 def bpe_tokenizer(text):
     return tokenizer.tokenize(text)
