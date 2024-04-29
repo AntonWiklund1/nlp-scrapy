@@ -10,7 +10,7 @@ from transformers import pipeline, RobertaTokenizer, RobertaForSequenceClassific
 import warnings
 from torchtext.data.utils import get_tokenizer
 
-from training_model import TextClassifier
+from model import TextClassifier
 warnings.filterwarnings('ignore')
 from colorama import Fore, Style, init
 init()  # Initialize colorama for Windows
@@ -23,15 +23,21 @@ import constants
 from torchtext.data.utils import get_tokenizer
 
 import pickle
-
 import nltk
-
 import re
 
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support
+
+from dataset.preprocessing import get_vocab_size, prepare_data, collate_batch
+from dataset.news_dataset import NewsDataset
+
+import torch
+from torch.optim import AdamW
+from torch.utils.data import DataLoader, SubsetRandomSampler
+from model import TextClassifier
 
 #nltk.download('stopwords')
 #nltk.download('wordnet')
@@ -40,35 +46,9 @@ from sklearn.metrics import accuracy_score, precision_recall_fscore_support
 # Initialize the models for embeddings 
 sentence_model = SentenceTransformer('all-MiniLM-L6-v2')
 
-# Assume these are defined or loaded appropriately
- 
-embed_dim = constants.emded_dim
-num_class = constants.num_class
-
-def yield_tokens(data_iter):
-    tokenizer = get_tokenizer("basic_english")
-    for text in data_iter:
-        yield tokenizer(text)
-# Loading the dictionary back
-
-with open('vocab.pkl', 'rb') as vocab_file:
-    vocab = pickle.load(vocab_file)
-
 with open('category_to_int.pkl', 'rb') as handle:
     category_to_int = pickle.load(handle)
 
-
-# This assumes you also have the tokenizer and vocab ready
-def text_pipeline(x, vocab):
-    tokenizer = get_tokenizer("basic_english")
-    return [vocab[token] for token in tokenizer(x)]
-
-vocab_size = len(vocab)
-
-# Recreate the model structure
-model = TextClassifier(len(vocab), constants.emded_dim, constants.num_class)
-model.load_state_dict(torch.load("./models/topic_classifier.pth", map_location=torch.device('cpu')))
-model.eval()  # Set the model to evaluation mode
 
 # Load the RoBERTa model for sentiment analysis
 roberta_tokenizer = RobertaTokenizer.from_pretrained("cardiffnlp/twitter-roberta-base-sentiment")
@@ -78,13 +58,40 @@ roberta_sentiment = pipeline("sentiment-analysis", model=roberta_model, tokenize
 # Load other necessary libraries and models
 nlp = spacy.load('en_core_web_lg')  # For entity extraction
 
-
-# Load the data and keywords
-data = pd.read_csv('./data/processed/bbc_articles.csv')
 keywords = pd.read_csv('./data/environment_keywords.txt', header=None)[0].tolist()
 
 # Compute embeddings for the keywords
 keyword_embeddings = sentence_model.encode(keywords)
+
+def load_and_predict_categories():
+    int_to_category = {v: k for k, v in category_to_int.items()}
+    
+    df = prepare_data("./data/scraped/bbc_articles.csv", text='body')
+
+    dataset = NewsDataset(df['body'].reset_index(drop=True), df['Category'].reset_index(drop=True))
+    loader = DataLoader(dataset, batch_size=constants.batch_size, collate_fn=collate_batch)
+
+
+    vocab_size = get_vocab_size()
+    model = TextClassifier(vocab_size, constants.embed_dim, constants.num_class, constants.num_heads, constants.dropout_rate, constants.layer_size, constants.number_of_layers)
+    model.load_state_dict(torch.load("./results/fine_tuned_model.pth", map_location=torch.device('cpu')))
+    model.eval()  # Set the model to evaluation mode
+
+    predictions = []
+    with torch.no_grad():
+        for texts, labels in loader:
+            output = model(texts)
+            predictions.extend(output.argmax(1).tolist())
+            total_accuracy += (output.argmax(1) == labels).sum().item()
+            total_count += len(labels)
+
+    df['predicted_category'] = [int_to_category[pred] for pred in predictions]
+    df['confidence'] = [output[idx].max().item() for idx, output in zip(predictions, output)]
+
+    # Sort by confidence in descending order and select the top 300
+    top_df = df.sort_values('confidence', ascending=False).head(300)
+    
+    return top_df
 
 def extract_entities(text):
     """Extract ORG entities from the text using SpaCy."""
@@ -147,29 +154,14 @@ def find_scandals(keyword_similarity, entities, sentiment):
     else:
         return 'Normal'
 
-def predict_categories(df):
-    int_to_category = {v: k for k, v in category_to_int.items()}
-    results = []
-    
-    for text in tqdm(df['body'], desc="Predicting categories", total=df.shape[0]):
-        text_tensor = torch.tensor(text_pipeline(text, vocab), dtype=torch.int64).unsqueeze(0)  # Add batch dimension
-        with torch.no_grad():
-            probabilities = torch.softmax(model(text_tensor), dim=1)
-            max_prob, predicted_category = torch.max(probabilities, dim=1)
-            category_name = int_to_category[predicted_category.item()]
-            results.append((category_name, max_prob.item()))
-    
-    df['predicted_category'] = [res[0] for res in results]
-    df['confidence'] = [res[1] for res in results]
-    
-    # Sort by confidence in descending order and select the top 300
-    top_df = df.sort_values(by='confidence', ascending=False).head(300)
-    
-    return top_df
+
 
 # Main processing
 def process_data(df):
     """Process the data to add entities, predicted categories, and sentiment."""
+
+    df = load_and_predict_categories()
+
     tqdm.pandas()  # Initialize tqdm for pandas apply
 
     df = pre_process_data(df)
@@ -177,7 +169,6 @@ def process_data(df):
     print("Extracting entities from headlines and bodies...")
     df['entities'] = df['headline'].progress_apply(extract_entities) + df['body'].progress_apply(extract_entities)
 
-    df = predict_categories(df)
     
     print("Analyzing sentiment of articles...")
     # Use RoBERTa for sentiment analysis
@@ -217,7 +208,7 @@ def process_data(df):
         return df
 
 # Apply the processing to the data
-processed_data = process_data(data)
+processed_data = process_data()
 
 # Save the processed data
 output_file = Path('./results/news_enriched.csv')

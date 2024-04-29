@@ -7,3 +7,6 @@ folds = 5
 epochs = 100
 sequence_length = 512
 lr = 1e-2
+layer_size = 256
+dropout_rate = 0.6
+number_of_layers = 3
