@@ -116,3 +116,5 @@
 2024-04-26 - Best Validation Loss: 0.975676, Best Validation Accuracy: 45.00%, Test accuracy: 38.07, Scraped accuracy 30.67, Fine tunned accuracy 30.33, Total time taken: 2.44 minutes
 2024-04-28 - Best Validation Loss: 0.243854, Best Validation Accuracy: 92.20%, Test accuracy: 98.42, Scraped accuracy 67.67, Fine tunned accuracy 72.67, Total time taken: 106.47 minutes
 2024-04-28 - Best Validation Loss: 0.195767, Best Validation Accuracy: 93.57%, Test accuracy: 97.02, Scraped accuracy 68.00, Fine tunned accuracy 72.00, Total time taken: 124.11 minutes
+2024-04-29 - Best Validation Loss: 0.195767, Best Validation Accuracy: 93.57%, Test accuracy: 97.02, Scraped accuracy 68.00, Fine tunned accuracy 72.00, Total time taken: 122.39 minutes
+2024-04-29 - Best Validation Loss: 0.222307, Best Validation Accuracy: 91.29%, Test accuracy: 96.84, Scraped accuracy 62.67, Fine tunned accuracy 69.33, Total time taken: 93.90 minutes
