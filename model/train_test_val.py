@@ -128,7 +128,7 @@ def train(df, device, k_folds, epochs):
         train_loader = DataLoader(full_dataset, batch_size=constants.batch_size, sampler=train_subsampler, collate_fn=collate_batch)
         val_loader = DataLoader(full_dataset, batch_size=constants.batch_size, sampler=val_subsampler, collate_fn=collate_batch)
 
-        model = TextClassifier(vocab_size, embed_dim, num_class, num_heads=num_heads, dropout_rate=0.6, layer_size=256, number_of_layers=3)
+        model = TextClassifier(vocab_size, embed_dim, num_class, num_heads=num_heads, dropout_rate=0.6, layer_size=256, number_of_layers=2)
 
         optimizer = AdamW(model.parameters(), lr=lr, weight_decay=1e-2)
         scheduler = OneCycleLR(optimizer, max_lr=1e-2, steps_per_epoch=len(train_loader), epochs=epochs)
@@ -192,7 +192,7 @@ def test(df, device, model_path, feature_col='Text', label_col='Category'):
     test_dataset = NewsDataset(df[f'{feature_col}'].reset_index(drop=True), df[f'{label_col}'].reset_index(drop=True))
     test_loader = DataLoader(test_dataset, batch_size=constants.batch_size, collate_fn=collate_batch)
 
-    model = TextClassifier(get_vocab_size(), embed_dim, num_class, num_heads=num_heads, dropout_rate=0.6, layer_size=256, number_of_layers=3)
+    model = TextClassifier(get_vocab_size(), embed_dim, num_class, num_heads=num_heads, dropout_rate=0.6, layer_size=256, number_of_layers=2)
     model.load_state_dict(torch.load(model_path))
     model = model.to(device)
 
