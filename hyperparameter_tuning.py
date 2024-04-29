@@ -1,4 +1,5 @@
 import optuna
+import pandas as pd
 import torch
 from torch.optim import AdamW
 from torch.utils.data import DataLoader, SubsetRandomSampler
@@ -23,11 +24,11 @@ def objective(trial):
 
     scaler = GradScaler()
     # Hyperparameters to be tuned by Optuna
-    lr = trial.suggest_loguniform('lr', 3e-5, 3e-3) # Learning rate first is lower bound and second is upper bound 0.00001 to 0.0003
-    embed_dim = trial.suggest_categorical('embed_dim', [128, 256, 512])
+    lr = trial.suggest_loguniform('lr', 3e-3, 3e-2) # Learning rate first is lower bound and second is upper bound 0.00001 to 0.0003
+    embed_dim = trial.suggest_categorical('embed_dim', [128, 256])
     num_heads = 8 if embed_dim == 128 else trial.suggest_categorical('num_heads', [8, 16])
     dropout_rate = trial.suggest_uniform('dropout_rate', 0.1, 0.6)
-    layer_size = trial.suggest_categorical('layer_size', [128, 256, 512])
+    layer_size = trial.suggest_categorical('layer_size', [128, 256])
     number_of_layers = trial.suggest_int('number_of_layers', 1, 5)
 
     print(f"Learning rate: {lr}, Embedding dimension: {embed_dim}, Number of heads: {num_heads}, Dropout rate: {dropout_rate}, Layer size: {layer_size}, Number of layers: {number_of_layers}")
@@ -43,6 +44,8 @@ def objective(trial):
     labels = df['Category'].values
     full_dataset = NewsDataset(texts, labels)
     kfold = KFold(n_splits=constants.folds, shuffle=True)
+
+    best_model = None
     
    
     # Perform K-fold Cross Validation
@@ -93,7 +96,11 @@ def objective(trial):
                     total_accuracy += (output.argmax(1) == labels).sum().item()
 
             epoch_validation_loss = fold_validation_loss / fold_validation_count
-            epoch_accuracy = total_accuracy / fold_validation_count    
+            epoch_accuracy = total_accuracy / fold_validation_count
+            
+            trial.report(epoch_accuracy, epoch)
+            if trial.should_prune():
+                raise optuna.exceptions.TrialPruned()
 
             print(f"Fold {fold + 1}, Epoch {epoch + 1}: Training Loss: {loss.item():.6f}, Validation Loss: {epoch_validation_loss:.6f}, Validation Accuracy: {epoch_accuracy * 100:.2f}%")
             
@@ -104,6 +111,9 @@ def objective(trial):
                 if epoch_validation_loss < best_global_val_loss:
                     best_global_val_loss = epoch_validation_loss
                     print(f"{Fore.GREEN}Best validation loss improved to {best_global_val_loss:.6f}{Style.RESET_ALL}")
+                    # Save the model
+                    best_model_state_dict = model.state_dict()
+                    
             else:
                 early_stopping_counter += 1  # Increment counter when no improvement
                 print(f"{Fore.YELLOW}Early stopping counter: {early_stopping_counter}/{constants.early_stopping_patience}{Style.RESET_ALL}")
@@ -113,26 +123,50 @@ def objective(trial):
                 break  # Stop if no improvement for 'early_stopping_patience' consecutive epochs
 
 
-             # Report the current loss to Optuna and check if the trial should be pruned
-            trial.report(epoch_validation_loss, epoch)
+    scrapped_accuracy = test_scraped(best_model_state_dict, embed_dim, num_heads, dropout_rate, layer_size, number_of_layers)
+    print(f"Scrapped accuracy: {scrapped_accuracy * 100:.2f}%")
 
-            if trial.should_prune():
-                raise optuna.TrialPruned()
+    return scrapped_accuracy
 
-    return best_global_val_loss
+def test_scraped(best_model_state_dict, embed_dim, num_heads, dropout_rate, layer_size, number_of_layers):
+
+    df = prepare_data('data/scraped/bbc_articles.csv', text='body', augment=False, categories=False)
+    
+    test_dataset = NewsDataset(df['body'].reset_index(drop=True), df['Category'].reset_index(drop=True))
+    test_loader = DataLoader(test_dataset, batch_size=constants.batch_size, collate_fn=collate_batch)
+
+    
+    model = TextClassifier(vocab_size, embed_dim, constants.num_class, num_heads, dropout_rate, layer_size, number_of_layers)
+    model.load_state_dict(best_model_state_dict)
+    model.to(device)
+    model.eval()
+    
+    total_acc, total_count = 0, 0
+
+    with torch.no_grad():
+        for X, y in test_loader:
+            X, y = X.to(device), y.to(device)
+            pred = model(X)
+            total_acc += (pred.argmax(1) == y).sum().item()
+            total_count += y.size(0)
+            
+    accuracy = total_acc / total_count
+    
+    return accuracy
+
 
 def main():
     # Define the path to the SQLite database file
-    storage_path = "sqlite:///nlp_study.db"
+    storage_path = "sqlite:///nlp_study2.db"
     
     # Create or load a study
-    study = optuna.create_study(study_name='bbc_text_classification',
+    study = optuna.create_study(study_name='bbc_text_classification2',
                                 storage=storage_path,
                                 load_if_exists=True,
-                                direction='minimize',
+                                direction='maximize',
                                 pruner=MedianPruner())
     
-    study.optimize(objective, n_trials=20)
+    study.optimize(objective, n_trials=30)
     
     print("Best trial:")
     trial = study.best_trial
