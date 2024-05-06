@@ -7,6 +7,8 @@ import time
 from tqdm import tqdm
 import requests_cache
 import csv
+import pandas as pd
+from datetime import datetime, timedelta
 
 # Set up caching
 requests_cache.install_cache('bbc_cache', backend='sqlite', expire_after=300)
@@ -74,7 +76,24 @@ def scrape_detailed_page(driver, url, category):
         "Category": category
     }
 
-
+def standardize_date(date_str):
+    if 'ago' in date_str:
+        number, unit = date_str.split()[:2]
+        number = int(number)
+        if 'day' in unit:
+            return current_date - timedelta(days=number)
+        elif 'hour' in unit:
+            return current_date - timedelta(hours=number)
+        elif 'minute' in unit:
+            return current_date - timedelta(minutes=number)
+    elif 'Just now' in date_str:
+        return current_date
+    else:
+        # Parse exact date
+        try:
+            return pd.to_datetime(date_str, dayfirst=True)
+        except ValueError:
+            return pd.NaT  # Not a Time for unparseable formats
 
 def click_load_more(driver):
     try:
@@ -85,6 +104,9 @@ def click_load_more(driver):
         load_more_button.click()
     except Exception as e:
         print(f"Failed to click Load More: {e}")
+
+
+current_date = datetime.now()
 
 categories = [
     'innovation',
@@ -122,10 +144,17 @@ driver.quit()
 
 filtered_articles = [article for article in articles if article['body'] != "No body found" and article['time'] != "No time found"]
 
-with open("./data/processed/bbc_articles.csv", "w", newline='', encoding='utf-8') as file:
-    writer = csv.DictWriter(file, fieldnames=["id", "url", "headline", "body", "time", "Category"])
-    writer.writeheader()
-    for i, article in enumerate(filtered_articles, 1):
-        writer.writerow({"id": i, **article})
+filtered_articles = pd.DataFrame(filtered_articles)
 
-print(f"Saved {len(filtered_articles)} articles to './data/processed/bbc_articles.csv'")
+# Apply the standardization function to the 'time' column
+filtered_articles['time'] = filtered_articles['time'].apply(standardize_date)
+
+# Formatting to YYYY-MM-DD if needed
+filtered_articles['time'] = filtered_articles['time'].dt.strftime('%Y-%m-%d')
+
+# Write the DataFrame to a CSV file
+with open("./data/scraped/bbc_articles.csv", "w", newline='', encoding='utf-8') as file:
+    filtered_articles.to_csv(file, index_label='id')
+
+
+print(f"Saved {len(filtered_articles)} articles to './data/scraped/bbc_articles.csv'")
