@@ -30,6 +30,9 @@ num_class = constants.num_class
 num_heads = constants.num_heads
 lr = constants.lr
 early_stopping_patience = constants.early_stopping_patience
+layer_size = constants.layer_size
+number_of_layers = constants.number_of_layers
+dropout_rate = constants.dropout_rate
 
 def one_fold_training(train_loader, val_loader, model, loss_fn, optimizer, scheduler, device, epochs, early_stopping_patience, fold, best_global_val_loss, best_global_model, ud_ratio_history):
     """
@@ -128,8 +131,7 @@ def train(df, device, k_folds, epochs):
         train_loader = DataLoader(full_dataset, batch_size=constants.batch_size, sampler=train_subsampler, collate_fn=collate_batch)
         val_loader = DataLoader(full_dataset, batch_size=constants.batch_size, sampler=val_subsampler, collate_fn=collate_batch)
 
-        model = TextClassifier(vocab_size, embed_dim, num_class, num_heads=num_heads, dropout_rate=0.6, layer_size=256, number_of_layers=2)
-
+        model = TextClassifier(vocab_size, embed_dim, num_class, num_heads=num_heads, dropout_rate=dropout_rate, layer_size=layer_size, number_of_layers=number_of_layers)
         optimizer = AdamW(model.parameters(), lr=lr, weight_decay=1e-2)
         scheduler = OneCycleLR(optimizer, max_lr=1e-2, steps_per_epoch=len(train_loader), epochs=epochs)
         loss_fn = nn.CrossEntropyLoss()
@@ -192,7 +194,7 @@ def test(df, device, model_path, feature_col='Text', label_col='Category'):
     test_dataset = NewsDataset(df[f'{feature_col}'].reset_index(drop=True), df[f'{label_col}'].reset_index(drop=True))
     test_loader = DataLoader(test_dataset, batch_size=constants.batch_size, collate_fn=collate_batch)
 
-    model = TextClassifier(get_vocab_size(), embed_dim, num_class, num_heads=num_heads, dropout_rate=0.6, layer_size=256, number_of_layers=2)
+    model = TextClassifier(get_vocab_size(), embed_dim, num_class, num_heads=num_heads, dropout_rate=dropout_rate, layer_size=layer_size, number_of_layers=number_of_layers)
     model.load_state_dict(torch.load(model_path))
     model = model.to(device)
 
@@ -231,7 +233,7 @@ def fine_tune(df, device, epochs=20, percent_to_train=0.5):
     """Fine-tune the model on the scraped data."""
     print(f"{Fore.YELLOW}Fine-tuning the model on {device}...{Style.RESET_ALL}")
     # Load the model
-    model = TextClassifier(get_vocab_size(), embed_dim, num_class, num_heads=num_heads, dropout_rate=0.6, layer_size=256, number_of_layers=3)
+    model = TextClassifier(get_vocab_size(), embed_dim, num_class, num_heads=num_heads, dropout_rate=dropout_rate, layer_size=layer_size, number_of_layers=number_of_layers)
     model.load_state_dict(torch.load('./results/best_model.pth'))
     model = model.to(device)
 
