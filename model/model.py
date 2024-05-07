@@ -11,8 +11,12 @@ from warnings import filterwarnings
 filterwarnings('ignore')
 torch.manual_seed(42)
 
+from dataset.preprocessing import prepare_data, get_vocab_size
+import constants
+
+
 class TextClassifier(nn.Module):
-    def __init__(self, vocab_size, embed_dim, num_class, num_heads, dropout_rate=0.5, layer_size=256, number_of_layers=3):
+    def __init__(self, vocab_size = get_vocab_size(), embed_dim=constants.embed_dim, num_class=constants.num_class, num_heads=constants.num_heads, dropout_rate=constants.dropout_rate, layer_size=constants.layer_size, number_of_layers=constants.number_of_layers):
         super(TextClassifier, self).__init__()
         self.embedding = nn.Embedding(vocab_size, embed_dim)
         self.pos_encoder = PositionalEncoding(embed_dim)
