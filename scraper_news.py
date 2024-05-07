@@ -76,7 +76,9 @@ def scrape_detailed_page(driver, url, category):
         "Category": category
     }
 
+# Define the standardize_date function that will be used later
 def standardize_date(date_str):
+    current_date = datetime.now()
     if 'ago' in date_str:
         number, unit = date_str.split()[:2]
         number = int(number)
@@ -89,7 +91,6 @@ def standardize_date(date_str):
     elif 'Just now' in date_str:
         return current_date
     else:
-        # Parse exact date
         try:
             return pd.to_datetime(date_str, dayfirst=True)
         except ValueError:
@@ -105,7 +106,13 @@ def click_load_more(driver):
     except Exception as e:
         print(f"Failed to click Load More: {e}")
 
-
+def save_to_csv_by_day(data):
+    grouped = data.groupby('time')  # Group the articles by the 'time' column
+    for date, group in grouped:
+        filename = f'../data/scraped/articles_{date}.csv'  # Naming the file with the respective date
+        group.to_csv(filename, index=False)  # Save each group to a CSV file without the index
+        print(f"Saved {len(group)} articles to {filename}")
+ 
 current_date = datetime.now()
 
 categories = [
@@ -153,8 +160,4 @@ filtered_articles['time'] = filtered_articles['time'].apply(standardize_date)
 filtered_articles['time'] = filtered_articles['time'].dt.strftime('%Y-%m-%d')
 
 # Write the DataFrame to a CSV file
-with open("./data/scraped/bbc_articles.csv", "w", newline='', encoding='utf-8') as file:
-    filtered_articles.to_csv(file, index_label='id')
-
-
-print(f"Saved {len(filtered_articles)} articles to './data/scraped/bbc_articles.csv'")
+save_to_csv_by_day(filtered_articles)
