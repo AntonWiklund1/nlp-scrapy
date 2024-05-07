@@ -26,7 +26,7 @@ def main():
 
     print(f"Loading the data...")
     # Load the data
-    train_df = prepare_data("./data/bbc_news_train_2.csv", text='Text', augment=True, categories=True)
+    train_df = prepare_data("./data/bbc_news_train_3.csv", text='Text', augment=True, categories=True)
     test_df = prepare_data("./data/bbc_news_tests.csv", text='Text', augment=False)
     scraped_df = prepare_data("./data/scraped/bbc_articles.csv", text='body', augment=False, stratified_sampling=True)
 
