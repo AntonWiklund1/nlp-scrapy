@@ -43,7 +43,7 @@ def main():
     print(f"{Fore.YELLOW}Total time taken: {((end_time - start_time)/60):.2f} minutes{Style.RESET_ALL}")
 
     #test the model
-    model_path = './results/best_model.pth'
+    model_path = './results/topic_classifier.pkl'
     test_accuracy, test_predictions, test_labels = test(test_df, device, model_path, feature_col='Text', label_col='Category')
     print(f"{Fore.WHITE}Test Accuracy: {test_accuracy * 100:.2f}%{Style.RESET_ALL}")
 
@@ -55,7 +55,7 @@ def main():
     fine_tune(scraped_df, device, epochs=50, percent_to_train=0.5)
 
     #test the fine tuned model
-    model_path = './results/fine_tuned_model.pth'
+    model_path = '../results/fine_tuned_model.pkl'
     tuned_accuracy, tuned_predictions, tuned_labels = test(scraped_df, device, model_path, feature_col='body', label_col='Category')
     print(f"{Fore.WHITE}Fine Tuned Test Accuracy: {tuned_accuracy * 100:.2f}%{Style.RESET_ALL}")
 
