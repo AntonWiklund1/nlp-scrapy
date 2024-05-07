@@ -40,8 +40,8 @@ def load_and_predict_categories():
     df = prepare_data("./data/scraped/bbc_articles.csv", text='body', augment=False)
     dataset = NewsDataset(df['body'].reset_index(drop=True), df['Category'].reset_index(drop=True))
     loader = DataLoader(dataset, batch_size=constants.batch_size, collate_fn=collate_batch)
-    model = TextClassifier(get_vocab_size(), constants.embed_dim, constants.num_class, constants.num_heads, constants.dropout_rate, constants.layer_size, constants.number_of_layers)
-    model.load_state_dict(torch.load("./results/best_model.pth", map_location=torch.device('cpu')))
+    with open('./results/topic_classifier.pkl', "rb") as f:
+        model = pickle.load(f)
     model.eval()
 
     predictions, confidences = [], []
