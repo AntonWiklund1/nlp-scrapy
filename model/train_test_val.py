@@ -167,7 +167,8 @@ def train(df, device, k_folds, epochs):
     best_val_loss = min(val_loss_and_accuracy.keys())
     best_accuracy = val_loss_and_accuracy[best_val_loss]
 
-    torch.save(best_global_model, './results/best_model.pth')
+    with open('topic_classifier.pkl', 'wb') as f:
+        pickle.dump(best_global_model, f)
     return best_val_loss, best_accuracy
 
 def evaluate(dataloader, model, loss_fn, device):
@@ -195,7 +196,8 @@ def test(df, device, model_path, feature_col='Text', label_col='Category'):
     test_loader = DataLoader(test_dataset, batch_size=constants.batch_size, collate_fn=collate_batch)
 
     model = TextClassifier(get_vocab_size(), embed_dim, num_class, num_heads=num_heads, dropout_rate=dropout_rate, layer_size=layer_size, number_of_layers=number_of_layers)
-    model.load_state_dict(torch.load(model_path))
+    with open(model_path, "rb") as f:
+        model.load_state_dict(pickle.load(f))
     model = model.to(device)
 
     model.eval()
@@ -233,11 +235,10 @@ def fine_tune(df, device, epochs=20, percent_to_train=0.5):
     """Fine-tune the model on the scraped data."""
     print(f"{Fore.YELLOW}Fine-tuning the model on {device}...{Style.RESET_ALL}")
     # Load the model
-    model = TextClassifier(get_vocab_size(), embed_dim, num_class, num_heads=num_heads, dropout_rate=dropout_rate, layer_size=layer_size, number_of_layers=number_of_layers)
-    model.load_state_dict(torch.load('./results/best_model.pth'))
-    model = model.to(device)
-
+    with open('../results/topic_classifier.pkl', "rb") as f:
+        model = pickle.load(f)
     
+    model = model.to(device)
     # Split the data to percent_to_train for training
     df = df.sample(frac=1).reset_index(drop=True) # Shuffle the data
     train_size = int(percent_to_train * len(df))
@@ -267,7 +268,9 @@ def fine_tune(df, device, epochs=20, percent_to_train=0.5):
             total_count += X.size(0)
             if total_loss < best_loss:
                 best_loss = total_loss
-                torch.save(model.state_dict(), './results/fine_tuned_model.pth')
+                #save the model
+                with open('../results/fine_tuned_model.pkl', 'wb') as f:
+                    pickle.dump(model.state_dict(), f)
         print(f'Epoch {epoch+1}/{epochs}: Training Loss = {total_loss / total_count:.6f}')
         scheduler.step()
     
