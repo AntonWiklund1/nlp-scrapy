@@ -2,3 +2,4 @@ venv/
 nbc_news_cache.sqlite
 __pycache__/
 bbc_cache.sqlite
+/data/scraped_by_day/
