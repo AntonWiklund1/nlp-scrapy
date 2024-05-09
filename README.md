@@ -29,7 +29,7 @@ Install the necessary Python packages by running:
 This project uses the en_core_web_lg model for processing English text.
 
 ```` zsh
-    python -m spacy download en_core_web_lg
+    python -m spacy download en_core_web_md
 ````
 
 ## Usage
