@@ -161,7 +161,7 @@ def train(df, device, k_folds, epochs):
     average_val_losses = [sum(fold_val_losses) / len(all_val_losses) for fold_val_losses in zip(*all_val_losses)]
 
     # Plot the learning curve
-    plot_learning_curve(average_train_losses, average_val_losses, 'Average Learning Curve', './results/average_learning_curve.png')
+    plot_learning_curve(average_train_losses, average_val_losses, 'Average Learning Curve', './results/learning_curve.png')
     plot_ud_ratios(ud_ratio_history, './results/ud_ratios.png')
 
     best_val_loss = min(val_loss_and_accuracy.keys())
