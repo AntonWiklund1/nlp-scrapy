@@ -105,22 +105,43 @@ class TransformerBlock(nn.Module):
         return out, attn_weights
 
 class PositionalEncoding(nn.Module):
+    """Positional Encoding to provide positional information to the model"""
     def __init__(self, d_model, max_len=constants.sequence_length):
         super(PositionalEncoding, self).__init__()
+        # Create a zero matrix with dimensions [max_len, d_model]
         self.encoding = torch.zeros(max_len, d_model)
+        # Create a position array from 0 to max_len
         position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        # Compute the div_term for the frequencies used in the sinusoidal functions
         div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
-        
+
+        # Apply sin to even indices in the dimensions of the positional encodings
         self.encoding[:, 0::2] = torch.sin(position * div_term)
+        # Apply cos to odd indices in the dimensions of the positional encodings
         self.encoding[:, 1::2] = torch.cos(position * div_term)
-        
+
+        # Add a batch dimension and transpose to match input dimensions
         self.encoding = self.encoding.unsqueeze(0).transpose(0, 1)
+        # Register the positional encodings as a buffer that does not require gradients
         self.register_buffer('pe', self.encoding)
 
     def forward(self, x):
+        """
+        Adds positional encodings to the input embeddings.
+
+        Args:
+            x (Tensor): The embedding tensor (batch size, sequence length, embedding dimension).
+
+        Returns:
+            Tensor: The modified embedding tensor with added positional encodings.
+        """
+        # Add positional encoding to each embedding in the batch
+        # The positional encoding `pe` is automatically expanded to the size of the input batch.
+        # [:x.size(0), :] ensures that the positional encoding matches the input length in case of shorter sequences.
         return x + self.pe[:x.size(0), :]
 
 class AttentionPooling(nn.Module):
+    """Attention Pooling layer to compute a weighted average of the input sequence"""
     def __init__(self, input_dim):
         super(AttentionPooling, self).__init__()
         self.attention = nn.Sequential(
@@ -136,6 +157,6 @@ class AttentionPooling(nn.Module):
         x = x.reshape(-1, features)    # Flatten to (batch_size * seq_length, features)
         attn_weights = self.attention(x)  # Compute attention weights
         attn_weights = attn_weights.view(batch_size, seq_length, 1)  # Reshape to (batch_size, seq_length, 1)
-        # Perform weighted average using attention weights
+        # Perform the weighted sum along the sequence dimension
         pooled = torch.sum(attn_weights * x.view(batch_size, seq_length, features), dim=1)
         return pooled
