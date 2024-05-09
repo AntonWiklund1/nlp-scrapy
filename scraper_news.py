@@ -59,19 +59,35 @@ def scrape_news(category):
 
 def scrape_detailed_page(driver, url, category):
     driver.get(url)
-    time.sleep(0.5)
+    time.sleep(0.5)  # Give the page a moment to load
     soup = BeautifulSoup(driver.page_source, 'html.parser')
+
+    # Find the article headline
     headline = soup.find('h1')
-    sections = soup.find_all('section', attrs={"data-component": "text-block"})
+    if headline:
+        headline = headline.text.strip()
+    else:
+        headline = "No headline found"
+
+    # Find the article's publication time
     time_elem = soup.find('time')
-    
-    # Extracting text from each section and concatenating it
-    body_text = ' '.join(section.get_text(separator=' ', strip=True) for section in sections)
+    if time_elem:
+        time_elem = time_elem.text.strip()
+    else:
+        time_elem = "No time found"
+
+    # Locate the <article> tag and extract all <p> tags within it
+    article = soup.find('article')
+    if article:
+        paragraphs = article.find_all('p')
+        body_text = ' '.join(paragraph.get_text(separator=' ', strip=True) for paragraph in paragraphs)
+    else:
+        body_text = "No body found"
 
     return {
-        "headline": headline.text.strip() if headline else "No headline found",
-        "body": body_text if body_text else "No body found",
-        "time": time_elem.text.strip() if time_elem else "No time found",
+        "headline": headline,
+        "body": body_text,
+        "time": time_elem,
         "url": url,
         "Category": category
     }
@@ -108,11 +124,27 @@ def click_load_more(driver):
 
 def save_to_csv_by_day(data):
     grouped = data.groupby('time')  # Group the articles by the 'time' column
+    total_lenght = len(data)
     for date, group in grouped:
-        filename = f'../data/scraped/articles_{date}.csv'  # Naming the file with the respective date
+        filename = f'./data/scraped_by_day/articles_{date}.csv'  # Naming the file with the respective date
         group.to_csv(filename, index=False)  # Save each group to a CSV file without the index
         print(f"Saved {len(group)} articles to {filename}")
+    print(f"Total articles saved: {total_lenght}")
  
+#clear ./data/scraped_by_day folder
+import os
+import shutil
+folder = './data/scraped_by_day'
+for filename in os.listdir(folder):
+    file_path = os.path.join(folder, filename)
+    try:
+        if os.path.isfile(file_path) or os.path.islink(file_path):
+            os.unlink(file_path)
+        elif os.path.isdir(file_path):
+            shutil.rmtree(file_path)
+    except Exception as e:
+        print('Failed to delete %s. Reason: %s' % (file_path, e))
+
 current_date = datetime.now()
 
 categories = [
@@ -161,3 +193,5 @@ filtered_articles['time'] = filtered_articles['time'].dt.strftime('%Y-%m-%d')
 
 # Write the DataFrame to a CSV file
 save_to_csv_by_day(filtered_articles)
+
+filtered_articles.to_csv(f'./data/scraped/all_articles.csv', index=False)
