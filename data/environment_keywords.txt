@@ -1,34 +1,22 @@
-Pollution
-Emission
-Contamination
-Oil spill
-Toxic waste
-Deforestation
-Overfishing
-Industrial waste
-Hazardous materials
-Smog
-Acid rain
-Greenhouse gases
-Illegal dumping
-Wildlife trafficking
-Fracking
-Pesticides
-Lead poisoning
-Environmental violation
-Endangered species
-Air quality
-Water pollution
-Soil contamination
-Radiation leak
-Eco-terrorism
-Coral bleaching
-Resource depletion
-Chemical spill
-Bioaccumulation
-Non-renewable resources
-Renewable resources misuse
-Environmental degradation
-Conservation issues
+Air pollution
+Water contamination
+Toxic waste dumping
+Industrial spill
+Chemical leak
+Illegal logging
+Clear-cutting
+Rainforest destruction
+Habitat destruction
+Wildlife endangerment
+Poaching
 Biodiversity loss
-Ecosystem collapse
+Overfishing
+Unsustainable mining
+Oil extraction
+Natural gas flaring
+Carbon emissions
+Greenhouse gases
+Methane release
+Soil contamination
+Desertification
+Landfill overflow
