@@ -37,7 +37,7 @@ keyword_embeddings = sentence_model.encode(keywords)
 
 def load_and_predict_categories():
     int_to_category = {v: k for k, v in category_to_int.items()}
-    df = prepare_data("./data/scraped/bbc_articles.csv", text='body', augment=False)
+    df = prepare_data("./data/scraped/all_articles.csv", text='body', augment=False)
     dataset = NewsDataset(df['body'].reset_index(drop=True), df['Category'].reset_index(drop=True))
     loader = DataLoader(dataset, batch_size=constants.batch_size, collate_fn=collate_batch)
     with open('./results/topic_classifier.pkl', "rb") as f:
@@ -96,6 +96,19 @@ def compute_similarity_and_keyword(text, keyword_embeddings, keywords):
     else:
         return 0, None
 
+def falg_top_10_articles(df):
+    """
+        Adds another column to the dataframe that flags the top 10 articles based on the keyword similarity.
+
+        Args:
+            df (DataFrame): The input dataframe.
+
+        Returns:
+            DataFrame: The modified dataframe with the 'Top_10' column added.
+    """
+    df['Top_10'] = df['keyword_similarity'].rank(ascending=False) <= 10
+    return df
+
 def process_data():
 
     #initialize tqdm
@@ -115,11 +128,14 @@ def process_data():
     print("finding scandals...")
     df['scandal'] = df.progress_apply(lambda x: find_scandals(x['keyword_similarity'], x['entities'], x['sentiment']), axis=1)
 
+    print("Flagging top 10 articles...")
+    df = falg_top_10_articles(df)
+
     accuracy = accuracy_score(df['Category'], df['predicted_category'])
     precision, recall, f1, _ = precision_recall_fscore_support(df['Category'], df['predicted_category'], average='weighted')
 
     print(f"Accuracy: {accuracy}\nPrecision: {precision}\nRecall: {recall}\nF1-Score: {f1}")
-    return df[['predicted_category', 'Category', 'sentiment', 'entities', 'headline', 'url', 'time', 'body', 'keyword_similarity', 'scandal', 'most_similar_keyword']]
+    return df[['predicted_category', 'Category', 'sentiment', 'entities', 'headline', 'url', 'time', 'keyword_similarity', 'scandal','Top_10','most_similar_keyword','body']]
 
 # Apply the processing to the data
 processed_data = process_data()
