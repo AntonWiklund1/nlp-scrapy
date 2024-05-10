@@ -27,56 +27,57 @@ def get_vocab_size():
     return tokenizer.vocab_size
 
 
-def prepare_data(file_path, text, augment=False, rows=None, categories=None, stratified_sampling=False):
+def prepare_data(file_path, text, augment=False, rows=None, categories=None, stratified_sampling=False, return_og=False):
     # Load the data
     set_seed()
     df = pd.read_csv(file_path)
     df = df[df['Category'] != 'sport']
 
+    temp_df = df.copy()
     #shuffle the data
-    df = df.sample(frac=1, random_state=42).reset_index(drop=True)
+    #temp_df = temp_df.sample(frac=1, random_state=42).reset_index(drop=True)
 
     if rows:
         # Ensure even distribution of categories if rows is specified
-        num_categories = len(df['Category'].unique())
+        num_categories = len(temp_df['Category'].unique())
         samples_per_category = rows // num_categories
         subsets = []
 
-        for category in df['Category'].unique():
-            category_subset = df[df['Category'] == category]
+        for category in temp_df['Category'].unique():
+            category_subset = temp_df[temp_df['Category'] == category]
             if len(category_subset) < samples_per_category:
                 sampled_subset = category_subset.sample(samples_per_category, replace=True)
             else:
                 sampled_subset = category_subset.sample(samples_per_category, random_state=42)
             subsets.append(sampled_subset)
 
-        df = pd.concat(subsets).sample(frac=1, random_state=42).reset_index(drop=True)
+        temp_df = pd.concat(subsets).sample(frac=1, random_state=42).reset_index(drop=True)
 
     if categories:
         # Convert the category to int
-        categories = df['Category'].unique()
+        categories = temp_df['Category'].unique()
         category_to_int = {category: i for i, category in enumerate(categories)}
         with open('./category_to_int.pkl', 'wb') as handle:
             pickle.dump(category_to_int, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
     if stratified_sampling:
         balanced_subsets = []
-        for category in df['Category'].unique():
-            category_subset = df[df['Category'] == category]
+        for category in temp_df['Category'].unique():
+            category_subset = temp_df[temp_df['Category'] == category]
             if len(category_subset) < 75:
                 sampled_subset = category_subset.sample(75, replace=True)
             else:
                 sampled_subset = category_subset.sample(75, random_state=42)
             balanced_subsets.append(sampled_subset)
-        df = pd.concat(balanced_subsets, ignore_index=True)
-        df = df.sample(frac=1, random_state=42).reset_index(drop=True)
+        temp_df = pd.concat(balanced_subsets, ignore_index=True)
+        temp_df = temp_df.sample(frac=1, random_state=42).reset_index(drop=True)
 
     with open('./category_to_int.pkl', 'rb') as handle:
         category_to_int = pickle.load(handle)
 
 
-    df['Category'] = df['Category'].map(category_to_int)
-    df = preprocess_data(df, text=text)
+    temp_df['Category'] = temp_df['Category'].map(category_to_int)
+    temp_df = preprocess_data(temp_df, text=text)
 
     if augment:
         augmenters = [
@@ -84,10 +85,12 @@ def prepare_data(file_path, text, augment=False, rows=None, categories=None, str
             naw.RandomWordAug(action="delete"),
             naw.RandomWordAug(action="swap")
         ]
-        augmented_texts = augment_text(df, augmenters, num_augments=1)
-        augmented_df = pd.DataFrame({'Text': augmented_texts, 'Category': df['Category']})
-        df = augmented_df
+        augmented_texts = augment_text(temp_df, augmenters, num_augments=1)
+        augmented_temp_df = pd.DataFrame({'Text': augmented_texts, 'Category': temp_df['Category']})
+        temp_df = augmented_temp_df
 
+    if return_og:
+        return temp_df, df
     return df
 
 def bpe_tokenizer(text):

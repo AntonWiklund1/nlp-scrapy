@@ -21,7 +21,7 @@ from dataset.preprocessing import get_vocab_size, prepare_data, collate_batch
 from dataset.news_dataset import NewsDataset
 
 # Initialize and configure necessary modules
-nlp = spacy.load('en_core_web_lg')  # For entity extraction
+nlp = spacy.load('en_core_web_md')  # For entity extraction
 sentence_model = SentenceTransformer('all-MiniLM-L6-v2')
 roberta_tokenizer = RobertaTokenizer.from_pretrained("cardiffnlp/twitter-roberta-base-sentiment")
 roberta_model = RobertaForSequenceClassification.from_pretrained("cardiffnlp/twitter-roberta-base-sentiment")
@@ -37,9 +37,21 @@ keyword_embeddings = sentence_model.encode(keywords)
 
 def load_and_predict_categories():
     int_to_category = {v: k for k, v in category_to_int.items()}
-    df = prepare_data("./data/scraped/all_articles.csv", text='body', augment=False)
-    dataset = NewsDataset(df['body'].reset_index(drop=True), df['Category'].reset_index(drop=True))
+    processed_df, original_df = prepare_data("./data/scraped/all_articles.csv", text='body', return_og=True)
+    #add the fixed articles
+    fixed_processed_df, fixed_original_df = prepare_data("./data/example_scandals_fixed.csv", text='body', return_og=True)
+
+    processed_df = pd.concat([processed_df, fixed_processed_df])
+    original_df = pd.concat([original_df, fixed_original_df])
+
+    print(processed_df.columns)
+    # Check alignment
+    if len(processed_df) != len(original_df):
+        print("Warning: Processed and original DataFrames are of different lengths.")
+    
+    dataset = NewsDataset(processed_df['body'].reset_index(drop=True), processed_df['Category'].reset_index(drop=True))
     loader = DataLoader(dataset, batch_size=constants.batch_size, collate_fn=collate_batch)
+
     with open('./results/topic_classifier.pkl', "rb") as f:
         model = pickle.load(f)
     model.eval()
@@ -51,10 +63,17 @@ def load_and_predict_categories():
             predictions.extend(output.argmax(dim=1).tolist())
             confidences.extend(output.max(dim=1).values.tolist())
 
-    df['predicted_category'] = [int_to_category[pred] for pred in predictions]
-    df['confidence'] = confidences
-    df['Category'] = df['Category'].apply(lambda x: int_to_category[x])
-    return df.sort_values('confidence', ascending=False).head(300)
+    # Ensure predictions match the original DataFrame length
+    if len(predictions) != len(original_df):
+        print("Error: Prediction length does not match the original DataFrame length.")
+        return None  # or handle this scenario as needed
+
+    # Mapping predictions back to category names
+    original_df['predicted_category'] = [int_to_category[pred] for pred in predictions]
+    original_df['confidence'] = confidences
+
+    return original_df.sort_values('confidence', ascending=False).head(300)
+
 
 def extract_entities(text):
     doc = nlp(text)
@@ -63,20 +82,6 @@ def extract_entities(text):
 def classify_sentiment(text):
     result = roberta_sentiment(text)[0]['label']
     return {'LABEL_0': 'Negative', 'LABEL_1': 'Neutral', 'LABEL_2': 'Positive'}.get(result, 'Neutral')
-
-def pre_process_data(df):
-    stop_words = set(stopwords.words('english'))
-    lemmatizer = WordNetLemmatizer()
-
-    def clean_text(text):
-        text = text.lower()
-        text = re.sub(r'http\S+', '', text)
-        text = ' '.join([word for word in text.split() if word not in stop_words])
-        text = ' '.join([lemmatizer.lemmatize(word) for word in text.split()])
-        return re.sub(r'\s+', ' ', text).strip()
-
-    df['body'] = df['body'].apply(clean_text)
-    return df
 
 def find_scandals(keyword_similarity, entities, sentiment):
     if keyword_similarity > 0.1 and entities and sentiment == 'Negative':
