@@ -82,9 +82,19 @@ To detect environmental scandals, the following categories and associated keywor
 
 - Pollution: Air pollution, Water contamination, Toxic waste dumping, Industrial spill, Chemical leak
 - Deforestation: Illegal logging, Clear-cutting, Rainforest destruction, Habitat destruction
-- Wildlife Impact: Wildlife endangerment, Poaching, Biodiversity loss
+- Wildlife Impact: Wildlife endangerment, Biodiversity loss
 - Resource Exploitation: Overfishing, Unsustainable mining, Oil extraction, Natural gas flaring
 - Climate Change Impact: Carbon emissions, Greenhouse gases, Methane release
 - Land and Soil Degradation: Soil contamination, Desertification, Landfill overflow
 
 Each category is defined with specific keywords to ensure precision in detecting relevant articles while minimizing false positives.
+
+Text embeddings are generated using the SentenceTransformer model. Cosine distances between these embeddings and precomputed keyword embeddings are calculated using scipy.spatial.distance.cdist, converting the cosine distance to similarity by subtracting it from 1.
+
+Imagine a sphere and if you put the 2 words into that space and draw a line to the circle the closer angle is how similiar they are. 1 is excatly the same 0 is 90 degress or more apart
+
+
+
+
+
+

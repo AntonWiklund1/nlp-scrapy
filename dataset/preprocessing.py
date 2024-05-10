@@ -91,7 +91,7 @@ def prepare_data(file_path, text, augment=False, rows=None, categories=None, str
 
     if return_og:
         return temp_df, df
-    return df
+    return temp_df
 
 def bpe_tokenizer(text):
     return tokenizer.tokenize(text)
